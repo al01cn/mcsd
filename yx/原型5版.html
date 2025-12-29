@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyLink - 混合动力联机工具</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Nunito', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        primary: { DEFAULT: '#4DB7FF', hover: '#66C5FF', active: '#1FA4FF', light: '#E0F2FE' },
+                        success: '#4ADE80',
+                        warning: '#FFB347',
+                        error: '#FF6B6B',
+                        surface: '#F8FAFC',
+                        card: '#FFFFFF',
+                        border: '#E2E8F0'
+                    },
+                    boxShadow: {
+                        'soft': '0 8px 30px rgba(0,0,0,0.04)',
+                        'float': '0 10px 40px rgba(77, 183, 255, 0.2)',
+                        'menu': '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                        'modal': '0 20px 50px -12px rgba(0, 0, 0, 0.15)'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        :root { --ease-spring: cubic-bezier(0.4, 0.0, 0.2, 1); }
+        body { background-color: #F8FAFC; color: #1E293B; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+
+        /* Titlebar */
+        .app-titlebar { 
+            background: rgba(255, 255, 255, 0.8); 
+            backdrop-filter: blur(20px); 
+            border-bottom: 1px solid rgba(226, 232, 240, 0.8); 
+        }
+        
+        /* Navigation Tabs */
+        .nav-tab { 
+            position: relative; 
+            transition: all 0.3s var(--ease-spring); 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .nav-tab.active { color: #4DB7FF; }
+        .nav-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 20px;
+            height: 3px;
+            background: #4DB7FF;
+            border-radius: 99px 99px 0 0;
+        }
+        
+        /* Floating Button */
+        .fab {
+            width: 52px;
+            height: 52px;
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s var(--ease-spring);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+            position: fixed;
+            bottom: 32px;
+            z-index: 50;
+        }
+        .fab:hover { transform: scale(1.08) translateY(-3px); }
+
+        /* View Animations */
+        .view-section { display: none; animation: fadeIn 0.4s var(--ease-spring); }
+        .view-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Dropdown & Modal States */
+        .hidden-custom { opacity: 0; transform: scale(0.95) translateY(-10px); pointer-events: none; }
+        .show-custom { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
+        
+        .hidden-modal { opacity: 0; pointer-events: none; }
+        .hidden-modal .modal-content { transform: scale(0.9) translateY(20px); }
+        .show-modal { opacity: 1; pointer-events: auto; }
+        .show-modal .modal-content { transform: scale(1) translateY(0); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
+
+        @keyframes toastSlideIn { 
+            from { opacity: 0; transform: translate(-50%, -20px) scale(0.95); } 
+            to { opacity: 1; transform: translate(-50%, 0) scale(1); } 
+        }
+        .toast-animate { animation: toastSlideIn 0.3s var(--ease-spring) forwards; }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <!-- 1. Header & Navigation -->
+    <header class="app-titlebar h-14 flex-shrink-0 flex items-center justify-between px-6 z-[60]">
+        <div class="flex items-center gap-2.5 w-40">
+            <div class="w-6 h-6 bg-primary rounded-lg flex items-center justify-center text-white">
+                <i data-lucide="cloud-lightning" class="w-3.5 h-3.5"></i>
+            </div>
+            <span class="font-black text-sm tracking-tight text-slate-800 text-nowrap">SkyLink Console</span>
+        </div>
+
+        <nav class="flex items-center gap-4 h-full">
+            <button onclick="switchView('home')" id="nav-home" class="nav-tab active font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-4">
+                控制台
+            </button>
+            <button onclick="switchView('network')" id="nav-network" class="nav-tab font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-4">
+                节点发现
+            </button>
+            <button onclick="switchView('stats')" id="nav-stats" class="nav-tab font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-4">
+                流量统计
+            </button>
+        </nav>
+
+        <div class="flex items-center w-40 justify-end h-full gap-1">
+            <button class="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-colors">
+                <i data-lucide="minus" class="w-4 h-4"></i>
+            </button>
+            <button class="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-red-500 hover:text-white transition-colors">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- 2. Main Area -->
+    <main class="flex-1 overflow-y-auto relative bg-slate-50/50">
+        <!-- Decorator -->
+        <div class="fixed top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-[100px] pointer-events-none"></div>
+
+        <div class="max-w-4xl mx-auto px-6 py-10 pb-24">
+            
+            <!-- VIEW: HOME -->
+            <div id="view-home" class="view-section active space-y-6">
+                <!-- Top Info Bar -->
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl font-black text-slate-800 tracking-tight">运行控制台</h2>
+                        <p class="text-slate-400 font-bold text-xs uppercase tracking-wider">Hybrid Link Ready</p>
+                    </div>
+                    
+                    <div class="flex items-center gap-3">
+                        <div class="hidden sm:flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-xl border border-green-100">
+                            <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+                            <span class="text-[10px] font-bold text-success uppercase tracking-wider">上海节点已就绪</span>
+                        </div>
+                        
+                        <div class="relative">
+                            <button onclick="toggleUserDropdown(event)" class="flex items-center gap-2 p-1 pr-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95">
+                                <img src="https://api.dicebear.com/7.x/notionists/svg?seed=Felix" class="w-8 h-8 rounded-lg bg-slate-100">
+                                <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-300"></i>
+                            </button>
+
+                            <div id="user-dropdown" class="hidden-custom absolute right-0 mt-2 w-44 bg-white rounded-2xl shadow-menu border border-slate-100 py-1.5 z-50">
+                                <button onclick="handleUserAction('profile')" class="w-full px-4 py-2 flex items-center gap-3 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors">
+                                    <i data-lucide="user" class="w-4 h-4 text-slate-400"></i> 用户中心
+                                </button>
+                                <button onclick="handleUserAction('settings')" class="w-full px-4 py-2 flex items-center gap-3 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors">
+                                    <i data-lucide="settings-2" class="w-4 h-4 text-slate-400"></i> 账户设置
+                                </button>
+                                <div class="mx-3 my-1 border-t border-slate-50"></div>
+                                <button onclick="openLogoutModal()" class="w-full px-4 py-2 flex items-center gap-3 text-xs font-bold text-error hover:bg-red-50 transition-colors">
+                                    <i data-lucide="log-out" class="w-4 h-4"></i> 退出登录
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metrics Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-5">
+                    <!-- IP & Port Card -->
+                    <div class="md:col-span-8 bg-white p-6 rounded-[2rem] shadow-soft border border-slate-100 group relative overflow-hidden flex flex-col justify-center">
+                        <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-2">当前虚拟 IP & 端口</p>
+                        <div class="flex items-end gap-3">
+                            <div class="flex items-center gap-3 cursor-pointer group/ip" onclick="copyText('192.168.10.45', 'IP')">
+                                <h3 class="text-4xl font-black text-slate-800 font-mono tracking-tight">192.168.10.45</h3>
+                                <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 group-hover/ip:text-primary transition-colors">
+                                    <i data-lucide="copy" class="w-4 h-4"></i>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 mb-1 px-3 py-1 bg-slate-50 rounded-lg border border-slate-100 hover:border-primary/30 transition-all cursor-pointer group/port" onclick="copyText('25565', '端口')">
+                                <span class="text-slate-400 font-mono text-sm">:</span>
+                                <span class="text-primary font-black font-mono text-xl">25565</span>
+                                <i data-lucide="copy" class="w-3 h-3 text-slate-300 group-hover/port:text-primary"></i>
+                            </div>
+                        </div>
+                        <i data-lucide="shield-check" class="absolute -right-2 -bottom-2 w-24 h-24 text-slate-50 opacity-40 group-hover:text-primary/10 transition-colors"></i>
+                    </div>
+
+                    <!-- Latency & Members Card -->
+                    <div class="md:col-span-4 bg-slate-900 p-6 rounded-[2rem] shadow-xl text-white flex flex-col justify-between relative overflow-hidden">
+                        <div class="flex justify-between items-start">
+                            <p class="text-slate-500 text-[10px] font-bold uppercase tracking-widest">实时状态</p>
+                            <div class="px-2 py-0.5 bg-success/20 text-success text-[10px] font-black rounded-md border border-success/30">
+                                极速
+                            </div>
+                        </div>
+                        
+                        <div class="my-4">
+                            <div class="flex items-baseline gap-1">
+                                <span class="text-4xl font-black text-primary font-mono">24</span>
+                                <span class="text-primary/40 text-xs font-bold">ms</span>
+                            </div>
+                            <div class="flex items-center gap-2 mt-1 text-slate-400">
+                                <i data-lucide="users" class="w-3.5 h-3.5"></i>
+                                <span class="text-xs font-bold">03 / 10 在线</span>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-1.5 mt-auto">
+                            <div class="h-1.5 flex-1 bg-primary rounded-full shadow-[0_0_8px_rgba(77,183,255,0.5)]"></div>
+                            <div class="h-1.5 flex-1 bg-primary/40 rounded-full"></div>
+                            <div class="h-1.5 flex-1 bg-primary/20 rounded-full"></div>
+                            <div class="h-1.5 flex-1 bg-primary/10 rounded-full"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Online Members -->
+                <div class="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-soft">
+                    <h4 class="font-bold text-slate-800 mb-4 flex items-center justify-between text-xs uppercase tracking-wider">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="users" class="w-3.5 h-3.5 text-primary"></i> 局域网在线成员 (03)
+                        </span>
+                        <span class="text-[10px] text-slate-400 normal-case font-medium">自动刷新中...</span>
+                    </h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="p-3 bg-slate-50 rounded-xl flex items-center gap-3 border border-transparent hover:border-primary/20 transition-all">
+                            <img src="https://api.dicebear.com/7.x/notionists/svg?seed=Host" class="w-9 h-9 rounded-lg bg-white shadow-sm">
+                            <div class="overflow-hidden">
+                                <p class="text-xs font-black text-slate-800 truncate">Felix (Host)</p>
+                                <p class="text-[9px] text-slate-400 font-mono">192.168.10.1</p>
+                            </div>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-xl flex items-center gap-3 border border-transparent hover:border-primary/20 transition-all">
+                            <img src="https://api.dicebear.com/7.x/notionists/svg?seed=Miki" class="w-9 h-9 rounded-lg bg-white shadow-sm">
+                            <div class="overflow-hidden">
+                                <p class="text-xs font-black text-slate-800 truncate">Miki_San</p>
+                                <p class="text-[9px] text-slate-400 font-mono">192.168.10.82</p>
+                            </div>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-xl flex items-center gap-3 border border-dashed border-slate-200 group cursor-pointer hover:bg-white hover:border-primary/40 transition-all">
+                            <div class="w-9 h-9 rounded-lg bg-slate-200 flex items-center justify-center group-hover:bg-primary/10">
+                                <i data-lucide="plus" class="w-4 h-4 text-slate-400 group-hover:text-primary"></i>
+                            </div>
+                            <p class="text-xs font-bold text-slate-400 group-hover:text-primary">邀请成员</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Bar -->
+                <div class="flex flex-col sm:flex-row gap-3 pt-2">
+                    <button class="flex-1 bg-primary hover:bg-primary-hover text-white py-4 rounded-2xl font-black text-base shadow-float transition-all active:scale-[0.98] flex items-center justify-center gap-3">
+                        <i data-lucide="play" class="w-5 h-5 fill-current"></i> 启动 Minecraft
+                    </button>
+                    <button class="px-6 bg-white border border-slate-200 rounded-2xl font-bold text-slate-600 hover:bg-slate-50 transition-all text-xs">
+                        管理游戏版本
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIEW: NETWORK & STATS -->
+            <div id="view-network" class="view-section text-center py-16 space-y-4">
+                <i data-lucide="globe" class="w-12 h-12 text-slate-200 mx-auto"></i>
+                <h3 class="font-bold text-slate-400">节点发现模块开发中...</h3>
+            </div>
+            
+            <div id="view-stats" class="view-section text-center py-16 space-y-4">
+                <i data-lucide="bar-chart-3" class="w-12 h-12 text-slate-200 mx-auto"></i>
+                <h3 class="font-bold text-slate-400">流量统计模块开发中...</h3>
+            </div>
+        </div>
+    </main>
+
+    <!-- Side Setting Ball -->
+    <button onclick="toggleSettings()" class="fab left-6 bg-white text-slate-400 border border-slate-100 hover:text-primary transition-colors group">
+        <i data-lucide="settings" class="w-5 h-5 group-hover:rotate-90 transition-transform duration-700"></i>
+    </button>
+
+    <!-- 3. Logout Modal -->
+    <div id="logout-modal" class="hidden-modal fixed inset-0 z-[200] flex items-center justify-center px-4 transition-all duration-300">
+        <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onclick="closeLogoutModal()"></div>
+        <div class="modal-content relative bg-white w-full max-w-[340px] rounded-[2rem] shadow-modal border border-slate-100 overflow-hidden transition-all duration-300">
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 bg-red-50 text-error rounded-2xl flex items-center justify-center mx-auto mb-5">
+                    <i data-lucide="log-out" class="w-7 h-7"></i>
+                </div>
+                <h3 class="text-lg font-black text-slate-800 mb-1.5">退出 SkyLink？</h3>
+                <p class="text-slate-500 text-[13px] font-medium leading-relaxed">
+                    退出后将断开所有联机节点。
+                </p>
+            </div>
+            <div class="flex gap-2.5 p-5 pt-0">
+                <button onclick="closeLogoutModal()" class="flex-1 py-3 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors text-[13px]">
+                    取消
+                </button>
+                <button onclick="confirmLogout()" class="flex-1 py-3 rounded-xl font-bold text-white bg-error hover:bg-red-500 transition-all active:scale-95 text-[13px]">
+                    确认退出
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Toasts Container -->
+    <div id="toast-container" class="fixed top-8 left-1/2 -translate-x-1/2 z-[210] flex flex-col gap-2 pointer-events-none items-center"></div>
+
+    <script>
+        lucide.createIcons();
+
+        function switchView(viewName) {
+            document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+            document.getElementById(`nav-${viewName}`)?.classList.add('active');
+            
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.getElementById(`view-${viewName}`)?.classList.add('active');
+            lucide.createIcons();
+        }
+
+        function toggleUserDropdown(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('user-dropdown');
+            dropdown.classList.toggle('show-custom');
+            dropdown.classList.toggle('hidden-custom');
+        }
+
+        function openLogoutModal() {
+            closeAllPopups();
+            document.getElementById('logout-modal').classList.replace('hidden-modal', 'show-modal');
+        }
+
+        function closeLogoutModal() {
+            document.getElementById('logout-modal').classList.replace('show-modal', 'hidden-modal');
+        }
+
+        function confirmLogout() {
+            closeLogoutModal();
+            showToast("正在断开虚拟网络...", "info");
+        }
+
+        function handleUserAction(action) {
+            closeAllPopups();
+            showToast(action === 'profile' ? "加载个人资料..." : "打开账户设置...");
+        }
+
+        function closeAllPopups() {
+            const dropdown = document.getElementById('user-dropdown');
+            dropdown?.classList.add('hidden-custom');
+            dropdown?.classList.remove('show-custom');
+        }
+
+        document.addEventListener('click', closeAllPopups);
+
+        function toggleSettings() {
+            showToast("正在配置全局参数...", "info");
+        }
+
+        function copyText(text, label = '内容') {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            showToast(`已复制${label}: ${text}`);
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `bg-white border border-slate-100 text-slate-800 px-5 py-2.5 rounded-xl shadow-float flex items-center gap-3 text-xs font-black pointer-events-auto toast-animate`;
+            const icon = type === 'success' ? 'check-circle' : 'info';
+            const colorClass = type === 'success' ? 'text-success' : 'text-primary';
+            toast.innerHTML = `<i data-lucide="${icon}" class="w-3.5 h-3.5 ${colorClass}"></i>${message}`;
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translate(-50%, -10px) scale(0.95)';
+                toast.style.transition = 'all 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

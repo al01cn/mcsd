@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyLink - 混合动力联机工具</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Nunito', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        primary: { DEFAULT: '#4DB7FF', hover: '#66C5FF', active: '#1FA4FF', light: '#E0F2FE' },
+                        success: '#4ADE80',
+                        warning: '#FFB347',
+                        error: '#FF6B6B',
+                        surface: '#F8FAFC',
+                        card: '#FFFFFF',
+                        border: '#E2E8F0'
+                    },
+                    boxShadow: {
+                        'soft': '0 8px 30px rgba(0,0,0,0.04)',
+                        'float': '0 10px 40px rgba(77, 183, 255, 0.2)',
+                        'menu': '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                        'modal': '0 20px 50px -12px rgba(0, 0, 0, 0.15)'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        :root { --ease-spring: cubic-bezier(0.4, 0.0, 0.2, 1); }
+        body { background-color: #F8FAFC; color: #1E293B; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+
+        /* Titlebar */
+        .app-titlebar { 
+            background: rgba(255, 255, 255, 0.8); 
+            backdrop-filter: blur(20px); 
+            border-bottom: 1px solid rgba(226, 232, 240, 0.8); 
+        }
+        
+        /* Navigation Tabs */
+        .nav-tab { 
+            position: relative; 
+            transition: all 0.3s var(--ease-spring); 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .nav-tab.active { color: #4DB7FF; }
+        .nav-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 20px;
+            height: 3px;
+            background: #4DB7FF;
+            border-radius: 99px 99px 0 0;
+        }
+        
+        /* Floating Button */
+        .fab {
+            width: 52px;
+            height: 52px;
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s var(--ease-spring);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+            position: fixed;
+            bottom: 32px;
+            z-index: 50;
+        }
+        .fab:hover { transform: scale(1.08) translateY(-3px); }
+
+        /* View Animations */
+        .view-section { display: none; animation: fadeIn 0.4s var(--ease-spring); }
+        .view-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Dropdown & Modal States */
+        .hidden-custom { opacity: 0; transform: scale(0.95) translateY(-10px); pointer-events: none; }
+        .show-custom { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
+        
+        .hidden-modal { opacity: 0; pointer-events: none; }
+        .hidden-modal .modal-content { transform: scale(0.9) translateY(20px); }
+        .show-modal { opacity: 1; pointer-events: auto; }
+        .show-modal .modal-content { transform: scale(1) translateY(0); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
+
+        @keyframes toastSlideIn { 
+            from { opacity: 0; transform: translate(-50%, -20px) scale(0.95); } 
+            to { opacity: 1; transform: translate(-50%, 0) scale(1); } 
+        }
+        .toast-animate { animation: toastSlideIn 0.3s var(--ease-spring) forwards; }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <!-- 1. Header & Navigation -->
+    <header class="app-titlebar h-14 flex-shrink-0 flex items-center justify-between px-6 z-[60]">
+        <div class="flex items-center gap-2.5 w-44">
+            <div class="w-6 h-6 bg-primary rounded-lg flex items-center justify-center text-white">
+                <i data-lucide="cloud-lightning" class="w-3.5 h-3.5"></i>
+            </div>
+            <span class="font-black text-sm tracking-tight text-slate-800 text-nowrap uppercase">SkyLink Console</span>
+        </div>
+
+        <nav class="flex items-center gap-4 h-full">
+            <button onclick="switchView('home')" id="nav-home" class="nav-tab active font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-5">
+                控制台
+            </button>
+            <button onclick="switchView('network')" id="nav-network" class="nav-tab font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-5">
+                节点发现
+            </button>
+        </nav>
+
+        <div class="flex items-center w-44 justify-end h-full gap-1">
+            <button class="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-colors">
+                <i data-lucide="minus" class="w-4 h-4"></i>
+            </button>
+            <button class="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-red-500 hover:text-white transition-colors">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- 2. Main Area -->
+    <main class="flex-1 overflow-y-auto relative bg-slate-50/50">
+        <!-- 背景修饰 -->
+        <div class="fixed top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-[100px] pointer-events-none"></div>
+
+        <div class="max-w-4xl mx-auto px-6 py-10 pb-24 relative z-10">
+            
+            <!-- VIEW: HOME (控制台主页) -->
+            <div id="view-home" class="view-section active space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl font-black text-slate-800 tracking-tight">运行控制台</h2>
+                        <p class="text-slate-400 font-bold text-xs uppercase tracking-wider">Hybrid Link Ready</p>
+                    </div>
+                    
+                    <div class="flex items-center gap-3">
+                        <div class="hidden sm:flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-xl border border-green-100">
+                            <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+                            <span class="text-[10px] font-bold text-success uppercase tracking-wider">上海节点已就绪</span>
+                        </div>
+                        
+                        <div class="relative">
+                            <button onclick="toggleUserDropdown(event)" class="flex items-center gap-2 p-1 pr-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95">
+                                <img src="https://api.dicebear.com/7.x/notionists/svg?seed=Felix" class="w-8 h-8 rounded-lg bg-slate-100">
+                                <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-300"></i>
+                            </button>
+
+                            <div id="user-dropdown" class="hidden-custom absolute right-0 mt-2 w-44 bg-white rounded-2xl shadow-menu border border-slate-100 py-1.5 z-50">
+                                <button onclick="handleUserAction('profile')" class="w-full px-4 py-2 flex items-center gap-3 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors">
+                                    <i data-lucide="user" class="w-4 h-4 text-slate-400"></i> 用户中心
+                                </button>
+                                <button onclick="handleUserAction('settings')" class="w-full px-4 py-2 flex items-center gap-3 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors">
+                                    <i data-lucide="settings-2" class="w-4 h-4 text-slate-400"></i> 账户设置
+                                </button>
+                                <div class="mx-3 my-1 border-t border-slate-50"></div>
+                                <button onclick="openLogoutModal()" class="w-full px-4 py-2 flex items-center gap-3 text-xs font-bold text-error hover:bg-red-50 transition-colors">
+                                    <i data-lucide="log-out" class="w-4 h-4"></i> 退出登录
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 数据卡片网格 -->
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-5">
+                    <!-- IP 卡片 -->
+                    <div class="md:col-span-8 bg-white p-7 rounded-[2.2rem] shadow-soft border border-slate-100 group relative overflow-hidden flex flex-col justify-center min-h-[160px]">
+                        <p class="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">当前虚拟 IP 地址</p>
+                        <div class="flex items-end gap-3">
+                            <div class="flex items-center gap-3 cursor-pointer group/ip" onclick="copyText('10.8.0.45', 'IP')">
+                                <h3 class="text-5xl font-black text-slate-800 font-mono tracking-tighter">10.8.0.45</h3>
+                                <div class="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center text-slate-300 group-hover/ip:text-primary group-hover/ip:bg-primary/5 transition-all">
+                                    <i data-lucide="copy" class="w-4 h-4"></i>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 mb-1 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100 hover:border-primary/30 transition-all cursor-pointer group/port" onclick="copyText('25565', '端口')">
+                                <span class="text-slate-400 font-mono text-sm">:</span>
+                                <span class="text-primary font-black font-mono text-xl">25565</span>
+                                <i data-lucide="copy" class="w-3 h-3 text-slate-300 group-hover/port:text-primary"></i>
+                            </div>
+                        </div>
+                        <i data-lucide="shield-check" class="absolute -right-2 -bottom-2 w-28 h-28 text-slate-50 opacity-40 group-hover:text-primary/10 transition-colors"></i>
+                    </div>
+
+                    <!-- 状态卡片 -->
+                    <div class="md:col-span-4 bg-slate-900 p-7 rounded-[2.2rem] shadow-xl text-white flex flex-col justify-between relative overflow-hidden">
+                        <div class="flex justify-between items-start">
+                            <p class="text-slate-500 text-[10px] font-black uppercase tracking-widest">物理延迟</p>
+                            <div class="px-2.5 py-0.5 bg-success/20 text-success text-[10px] font-black rounded-lg border border-success/30">极速</div>
+                        </div>
+                        
+                        <div class="my-3">
+                            <div class="flex items-baseline gap-1">
+                                <span class="text-5xl font-black text-primary font-mono">18</span>
+                                <span class="text-primary/40 text-sm font-bold">ms</span>
+                            </div>
+                        </div>
+
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between text-[10px] font-black uppercase tracking-tighter text-slate-500">
+                                <span>连接稳定性</span>
+                                <span class="text-primary">99.9%</span>
+                            </div>
+                            <div class="flex gap-1.5 h-1.5">
+                                <div class="flex-1 bg-primary rounded-full shadow-[0_0_8px_rgba(77,183,255,0.4)]"></div>
+                                <div class="flex-1 bg-primary/40 rounded-full"></div>
+                                <div class="flex-1 bg-primary/20 rounded-full"></div>
+                                <div class="flex-1 bg-primary/10 rounded-full"></div>
+                            </div>
+                        </div>
+                        <div class="absolute top-0 right-0 w-32 h-32 bg-primary/10 blur-[50px]"></div>
+                    </div>
+                </div>
+
+                <!-- 在线成员列表 -->
+                <div class="bg-white rounded-[2.2rem] p-7 border border-slate-100 shadow-soft">
+                    <div class="flex items-center justify-between mb-5">
+                        <h4 class="font-black text-slate-800 text-xs uppercase tracking-widest flex items-center gap-2">
+                            <i data-lucide="users" class="w-4 h-4 text-primary"></i> 局域网在线成员 (03)
+                        </h4>
+                        <button class="text-[10px] font-black text-primary hover:underline uppercase tracking-tight">管理成员</button>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="p-3.5 bg-slate-50 rounded-2xl flex items-center gap-3.5 border border-transparent hover:border-primary/20 hover:bg-white transition-all">
+                            <img src="https://api.dicebear.com/7.x/notionists/svg?seed=Host" class="w-10 h-10 rounded-xl bg-white shadow-sm">
+                            <div class="min-w-0">
+                                <p class="text-xs font-black text-slate-800 truncate">Felix (我)</p>
+                                <p class="text-[9px] text-slate-400 font-mono">10.8.0.1</p>
+                            </div>
+                        </div>
+                        <div class="p-3.5 bg-slate-50 rounded-2xl flex items-center gap-3.5 border border-transparent hover:border-primary/20 hover:bg-white transition-all">
+                            <img src="https://api.dicebear.com/7.x/notionists/svg?seed=Miki" class="w-10 h-10 rounded-xl bg-white shadow-sm">
+                            <div class="min-w-0">
+                                <p class="text-xs font-black text-slate-800 truncate">Miki_San</p>
+                                <p class="text-[9px] text-slate-400 font-mono">10.8.0.12</p>
+                            </div>
+                        </div>
+                        <div class="p-3.5 bg-white rounded-2xl flex items-center gap-3.5 border-2 border-dashed border-slate-100 group cursor-pointer hover:border-primary/40 transition-all">
+                            <div class="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-primary/5 group-hover:text-primary transition-all">
+                                <i data-lucide="plus" class="w-5 h-5"></i>
+                            </div>
+                            <p class="text-xs font-bold text-slate-400 group-hover:text-primary">邀请队友</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 操作栏 -->
+                <div class="flex flex-col sm:flex-row gap-4 pt-2">
+                    <button class="flex-[2] bg-primary hover:bg-primary-hover text-white py-5 rounded-[1.8rem] font-black text-lg shadow-float transition-all active:scale-[0.98] flex items-center justify-center gap-3">
+                        <i data-lucide="play" class="w-6 h-6 fill-current"></i> 启动联机游戏
+                    </button>
+                    <button class="flex-1 bg-white border border-slate-200 text-slate-600 py-5 rounded-[1.8rem] font-black text-sm hover:bg-slate-50 transition-all shadow-soft uppercase tracking-widest">
+                        高级设置
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIEW: NETWORK (节点发现 - 网格布局) -->
+            <div id="view-network" class="view-section space-y-6">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-3xl font-black text-slate-800 tracking-tight">节点发现</h2>
+                        <p class="text-slate-400 font-bold text-[11px] uppercase tracking-[0.2em] mt-1">发现并连接最快的混合动力节点</p>
+                    </div>
+                    <button class="p-3.5 bg-white border border-slate-100 rounded-2xl shadow-soft text-slate-400 hover:text-primary transition-all active:scale-95">
+                        <i data-lucide="rotate-cw" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <!-- 节点网格 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    
+                    <!-- 节点卡片 1 -->
+                    <div class="bg-white p-6 rounded-[2.2rem] border border-slate-100 shadow-soft hover:shadow-float hover:border-primary/20 transition-all group cursor-pointer relative overflow-hidden">
+                        <div class="flex justify-between items-start mb-6">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 bg-blue-50 text-primary rounded-2xl flex items-center justify-center font-black text-xl shadow-inner">CN</div>
+                                <div>
+                                    <h4 class="font-black text-slate-800 text-base leading-tight">上海 核心节点 B2</h4>
+                                    <p class="text-[10px] text-slate-400 font-bold flex items-center gap-1.5 mt-1 uppercase tracking-tight">
+                                        <i data-lucide="map-pin" class="w-3 h-3 text-slate-300"></i> 华东 · 联通核心网
+                                    </p>
+                                </div>
+                            </div>
+                            <span class="px-2.5 py-1 bg-green-50 text-success text-[10px] font-black rounded-lg border border-green-100 uppercase">在线 / 空闲</span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between pt-5 border-t border-slate-50">
+                            <div class="flex items-center gap-5">
+                                <div class="flex flex-col">
+                                    <span class="text-[9px] text-slate-400 font-black uppercase tracking-widest">延迟</span>
+                                    <span class="text-sm font-black text-success font-mono">12ms</span>
+                                </div>
+                                <div class="flex flex-col">
+                                    <span class="text-[9px] text-slate-400 font-black uppercase tracking-widest">带宽</span>
+                                    <span class="text-sm font-black text-slate-700 font-mono">1.0Gbps</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1.5 text-primary font-black text-xs group-hover:translate-x-1 transition-transform">
+                                连接节点 <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 节点卡片 2 (活跃状态) -->
+                    <div class="bg-white p-6 rounded-[2.2rem] border-2 border-primary/20 shadow-float bg-primary/[0.02] relative overflow-hidden">
+                        <div class="flex justify-between items-start mb-6">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 bg-primary text-white rounded-2xl flex items-center justify-center font-black text-xl shadow-lg shadow-primary/20">HK</div>
+                                <div>
+                                    <h4 class="font-black text-slate-800 text-base leading-tight">香港 CN2 优化节点</h4>
+                                    <p class="text-[10px] text-slate-400 font-bold flex items-center gap-1.5 mt-1 uppercase tracking-tight">
+                                        <i data-lucide="map-pin" class="w-3 h-3 text-slate-300"></i> 中国香港 · 国际中转
+                                    </p>
+                                </div>
+                            </div>
+                            <span class="px-2.5 py-1 bg-primary text-white text-[10px] font-black rounded-lg shadow-lg shadow-primary/20 uppercase">当前连接</span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between pt-5 border-t border-primary/10">
+                            <div class="flex items-center gap-5">
+                                <div class="flex flex-col">
+                                    <span class="text-[9px] text-slate-400 font-black uppercase tracking-widest">延迟</span>
+                                    <span class="text-sm font-black text-warning font-mono">42ms</span>
+                                </div>
+                                <div class="flex flex-col">
+                                    <span class="text-[9px] text-slate-400 font-black uppercase tracking-widest">带宽</span>
+                                    <span class="text-sm font-black text-slate-700 font-mono">500Mbps</span>
+                                </div>
+                            </div>
+                            <span class="text-slate-400 font-black text-[10px] italic uppercase">正在服务中</span>
+                        </div>
+                    </div>
+
+                    <!-- 节点卡片 3 -->
+                    <div class="bg-white p-6 rounded-[2.2rem] border border-slate-100 shadow-soft hover:shadow-float hover:border-primary/20 transition-all group cursor-pointer relative overflow-hidden">
+                        <div class="flex justify-between items-start mb-6">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner">US</div>
+                                <div>
+                                    <h4 class="font-black text-slate-800 text-base leading-tight">洛杉矶 全球加速</h4>
+                                    <p class="text-[10px] text-slate-400 font-bold flex items-center gap-1.5 mt-1 uppercase tracking-tight">
+                                        <i data-lucide="map-pin" class="w-3 h-3 text-slate-300"></i> 北美 · 高冗余骨干
+                                    </p>
+                                </div>
+                            </div>
+                            <span class="px-2.5 py-1 bg-orange-50 text-warning text-[10px] font-black rounded-lg border border-orange-100 uppercase">负载较高</span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between pt-5 border-t border-slate-50">
+                            <div class="flex items-center gap-5">
+                                <div class="flex flex-col">
+                                    <span class="text-[9px] text-slate-400 font-black uppercase tracking-widest">延迟</span>
+                                    <span class="text-sm font-black text-error font-mono">148ms</span>
+                                </div>
+                                <div class="flex flex-col">
+                                    <span class="text-[9px] text-slate-400 font-black uppercase tracking-widest">带宽</span>
+                                    <span class="text-sm font-black text-slate-700 font-mono">1.2Gbps</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1.5 text-primary font-black text-xs group-hover:translate-x-1 transition-transform">
+                                连接节点 <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 添加新节点 -->
+                    <div class="p-6 rounded-[2.2rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-3 hover:border-primary/50 hover:bg-white transition-all group cursor-pointer min-h-[180px]">
+                        <div class="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-primary/5 group-hover:text-primary transition-all">
+                            <i data-lucide="plus-circle" class="w-8 h-8"></i>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-sm font-black text-slate-500 group-hover:text-primary transition-colors">添加自定义节点</p>
+                            <p class="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-widest">支持私有联机服务器</p>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 侧边全局设置球 -->
+    <button onclick="toggleSettings()" class="fab left-6 bg-white text-slate-400 border border-slate-100 hover:text-primary transition-colors group">
+        <i data-lucide="settings" class="w-5 h-5 group-hover:rotate-90 transition-transform duration-700"></i>
+    </button>
+
+    <!-- 退出确认模态框 -->
+    <div id="logout-modal" class="hidden-modal fixed inset-0 z-[200] flex items-center justify-center px-4 transition-all duration-300">
+        <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onclick="closeLogoutModal()"></div>
+        <div class="modal-content relative bg-white w-full max-w-[340px] rounded-[2.5rem] shadow-modal border border-slate-100 overflow-hidden transition-all duration-300">
+            <div class="p-9 text-center">
+                <div class="w-18 h-18 bg-red-50 text-error rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner">
+                    <i data-lucide="log-out" class="w-8 h-8"></i>
+                </div>
+                <h3 class="text-xl font-black text-slate-800 mb-2">断开并退出 SkyLink?</h3>
+                <p class="text-slate-500 text-[13px] font-bold leading-relaxed px-4">
+                    退出将断开当前的虚拟网络通道，联机成员将无法互相访问。
+                </p>
+            </div>
+            <div class="flex gap-3 p-6 pt-0">
+                <button onclick="closeLogoutModal()" class="flex-1 py-4 rounded-xl font-black text-slate-500 bg-slate-50 hover:bg-slate-100 transition-colors text-xs uppercase tracking-widest">取消</button>
+                <button onclick="confirmLogout()" class="flex-1 py-4 rounded-xl font-black text-white bg-error hover:bg-red-500 transition-all active:scale-95 text-xs uppercase tracking-widest shadow-lg shadow-red-100">确认退出</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 吐司提示容器 -->
+    <div id="toast-container" class="fixed top-8 left-1/2 -translate-x-1/2 z-[210] flex flex-col gap-2 pointer-events-none items-center"></div>
+
+    <script>
+        lucide.createIcons();
+
+        function switchView(viewName) {
+            document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+            document.getElementById(`nav-${viewName}`)?.classList.add('active');
+            
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.getElementById(`view-${viewName}`)?.classList.add('active');
+            lucide.createIcons();
+        }
+
+        function toggleUserDropdown(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('user-dropdown');
+            dropdown.classList.toggle('show-custom');
+            dropdown.classList.toggle('hidden-custom');
+        }
+
+        function openLogoutModal() {
+            closeAllPopups();
+            document.getElementById('logout-modal').classList.replace('hidden-modal', 'show-modal');
+        }
+
+        function closeLogoutModal() {
+            document.getElementById('logout-modal').classList.replace('show-modal', 'hidden-modal');
+        }
+
+        function confirmLogout() {
+            closeLogoutModal();
+            showToast("正在安全关闭虚拟通道...", "info");
+            setTimeout(() => location.reload(), 1000);
+        }
+
+        function handleUserAction(action) {
+            closeAllPopups();
+            showToast(action === 'profile' ? "加载个人档案..." : "打开账户设置...");
+        }
+
+        function closeAllPopups() {
+            const dropdown = document.getElementById('user-dropdown');
+            dropdown?.classList.add('hidden-custom');
+            dropdown?.classList.remove('show-custom');
+        }
+
+        document.addEventListener('click', closeAllPopups);
+
+        function toggleSettings() {
+            showToast("打开全局参数配置...", "info");
+        }
+
+        function copyText(text, label = '内容') {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            showToast(`已复制${label}: ${text}`);
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `bg-white border border-slate-100 text-slate-800 px-6 py-3 rounded-2xl shadow-float flex items-center gap-3 text-xs font-black pointer-events-auto toast-animate`;
+            const icon = type === 'success' ? 'check-circle' : 'info';
+            const colorClass = type === 'success' ? 'text-success' : 'text-primary';
+            toast.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4 ${colorClass}"></i>${message}`;
+            container.appendChild(toast);
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translate(-50%, -10px) scale(0.95)';
+                toast.style.transition = 'all 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
