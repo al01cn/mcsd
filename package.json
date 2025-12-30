@@ -10,22 +10,30 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
+    "@types/tcp-port-used": "^1.0.4",
+    "child_process": "^1.0.2",
     "lucide-vue-next": "^0.562.0",
+    "ps-list": "^9.0.0",
     "tailwindcss": "^4.1.18",
+    "tcp-port-used": "^1.0.2",
     "vue": "^3.4.21",
     "vue-router": "4",
     "vue-sonner": "^2.0.9",
     "vue-toastification": "^2.0.0-rc.5"
   },
   "devDependencies": {
+    "@iconify-json/material-icon-theme": "^1.2.45",
+    "@iconify-json/mdi": "^1.2.3",
+    "@iconify-json/simple-icons": "^1.2.64",
+    "@iconify/vue": "^5.0.0",
     "@vitejs/plugin-vue": "^5.0.4",
-    "typescript": "^5.2.2",
-    "vite": "^5.1.6",
-    "vue-tsc": "^2.0.26",
     "electron": "^30.0.1",
     "electron-builder": "^24.13.3",
+    "typescript": "^5.2.2",
+    "vite": "^5.1.6",
     "vite-plugin-electron": "^0.28.6",
-    "vite-plugin-electron-renderer": "^0.14.5"
+    "vite-plugin-electron-renderer": "^0.14.5",
+    "vue-tsc": "^2.0.26"
   },
   "main": "dist-electron/main.js"
 }

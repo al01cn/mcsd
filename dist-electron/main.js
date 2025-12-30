@@ -25,7 +25,7 @@ function createWindow() {
     useContentSize: true,
     icon: path.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
     webPreferences: {
-      nodeIntegration: false,
+      nodeIntegration: true,
       contextIsolation: true,
       preload: path.join(__dirname$1, "preload.mjs")
     }
@@ -42,8 +42,7 @@ function createWindow() {
   ipcMain.on("window:close", () => {
     win == null ? void 0 : win.close();
   });
-  win.webContents.on("did-finish-load", () => {
-    win == null ? void 0 : win.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
+  win.webContents.on("did-finish-load", async () => {
   });
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL);
@@ -57,7 +56,7 @@ app.on("window-all-closed", () => {
     win = null;
   }
 });
-app.on("activate", () => {
+app.on("activate", async () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }

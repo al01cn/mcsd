@@ -1,59 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { User, Users, ChevronDown, Settings2, LogOut, Copy, ShieldCheck, Plus, Play } from 'lucide-vue-next';
-import { toast } from 'vue-sonner'
-
-const isOpen = ref(false);
-const isModalOpen = ref(false);
-
-function toggleUserDropdown(event: Event) {
-    event.stopPropagation();
-    isOpen.value = !isOpen.value;
-}
-
-function handleUserAction(action: string) {
-    toast('My first toast')
-    console.log(action);
-
-}
-
-// 打开退出弹窗（示例）
-function openLogoutModal() {
-    console.log('退出登录弹窗');
-    isModalOpen.value = !isModalOpen.value;
-}
+import { Users, Copy, ShieldCheck, Plus } from 'lucide-vue-next';
 
 
-const closeLogoutModal = () => {
-    isModalOpen.value = false
-}
-
-const confirmLogout = () => {
-    console.log("Logout");
-    
-    closeLogoutModal()
-}
-
-// 点击页面其他地方关闭下拉菜单
-function handleClickOutside(event: MouseEvent) {
-    const dropdown = document.getElementById('user-dropdown');
-    if (dropdown && !dropdown.contains(event.target as Node)) {
-        isOpen.value = false;
-    }
-}
-
-// 生命周期挂载和卸载事件监听
-onMounted(() => {
-    document.addEventListener('click', handleClickOutside);
-});
-onBeforeUnmount(() => {
-    document.removeEventListener('click', handleClickOutside);
-});
 </script>
 
 <template>
-    <!-- VIEW: HOME -->
-    <div id="view-home" class="view-section space-y-6">
+    <!-- VIEW: console -->
+    <div id="view-console" class="view-section space-y-6">
         <!-- Top Info Bar -->
         <div class="flex items-center justify-between">
             <div>
@@ -67,32 +20,6 @@ onBeforeUnmount(() => {
                     class="hidden sm:flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-xl border border-green-100">
                     <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
                     <span class="text-[10px] font-bold text-success uppercase tracking-wider">上海节点已就绪</span>
-                </div>
-
-                <div class="relative">
-                    <button @click="toggleUserDropdown"
-                        class="flex items-center gap-2 p-1 pr-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95">
-                        <img src="https://api.dicebear.com/7.x/notionists/svg?seed=Felix"
-                            class="w-8 h-8 rounded-lg bg-slate-100">
-                        <ChevronDown class="w-3.5 h-3.5 text-slate-300" />
-                    </button>
-
-                    <div id="user-dropdown"
-                        :class="`${isOpen ? 'show-custom' : 'hidden-custom'} absolute right-0 mt-2 w-44 bg-white rounded-2xl shadow-menu border border-slate-100 py-1.5 z-50`">
-                        <button @click="handleUserAction('profile')"
-                            class="w-full px-4 py-2 flex items-center gap-3 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors">
-                            <User class="w-4 h-4 text-slate-400" /> 用户中心
-                        </button>
-                        <button @click="handleUserAction('settings')"
-                            class="w-full px-4 py-2 flex items-center gap-3 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors">
-                            <Settings2 class="w-4 h-4 text-slate-400" /> 账户设置
-                        </button>
-                        <div class="mx-3 my-1 border-t border-slate-50"></div>
-                        <button @click="openLogoutModal()"
-                            class="w-full px-4 py-2 flex items-center gap-3 text-xs font-bold text-error hover:bg-red-50 transition-colors">
-                            <LogOut class="w-4 h-4" /> 退出登录
-                        </button>
-                    </div>
                 </div>
             </div>
         </div>
@@ -192,47 +119,6 @@ onBeforeUnmount(() => {
                         <Plus class="w-4 h-4 text-slate-400 group-hover:text-primary" />
                     </div>
                     <p class="text-xs font-bold text-slate-400 group-hover:text-primary">邀请成员</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Action Bar -->
-        <div class="flex flex-col sm:flex-row gap-3 pt-2">
-            <button
-                class="flex-1 bg-primary hover:bg-primary-hover text-white py-4 rounded-2xl font-black text-base shadow-float transition-all active:scale-[0.98] flex items-center justify-center gap-3">
-                <Play class="w-5 h-5 fill-current" /> 启动 Minecraft
-            </button>
-            <button
-                class="px-6 bg-white border border-slate-200 rounded-2xl font-bold text-slate-600 hover:bg-slate-50 transition-all text-xs">
-                管理游戏版本
-            </button>
-        </div>
-
-        <!-- 3. Logout Modal -->
-        <div
-            :class="`${isModalOpen ? 'show-modal' : 'hidden-modal'} absolute inset-0 z-200 flex items-center justify-center px-4 transition-all duration-300`">
-            <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onclick="closeLogoutModal()"></div>
-            <div
-                class="modal-content relative bg-white w-full max-w-85 rounded-4xl shadow-modal border border-slate-100 overflow-hidden transition-all duration-300">
-                <div class="p-8 text-center">
-                    <div
-                        class="w-16 h-16 bg-red-50 text-error rounded-2xl flex items-center justify-center mx-auto mb-5">
-                        <LogOut class="w-7 h-7" />
-                    </div>
-                    <h3 class="text-lg font-black text-slate-800 mb-1.5">退出 SkyLink？</h3>
-                    <p class="text-slate-500 text-[13px] font-medium leading-relaxed">
-                        退出后将断开所有联机节点。
-                    </p>
-                </div>
-                <div class="flex gap-2.5 p-5 pt-0">
-                    <button @click="closeLogoutModal()"
-                        class="flex-1 py-3 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors text-[13px]">
-                        取消
-                    </button>
-                    <button @click="confirmLogout()"
-                        class="flex-1 py-3 rounded-xl font-bold text-white bg-error hover:bg-red-500 transition-all active:scale-95 text-[13px]">
-                        确认退出
-                    </button>
                 </div>
             </div>
         </div>

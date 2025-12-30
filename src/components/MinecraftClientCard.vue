@@ -1,0 +1,141 @@
+<script lang="ts" setup>
+import { Activity, AlertCircle, Loader2 } from "lucide-vue-next"
+import { Icon } from "@iconify/vue";
+
+defineProps({
+    loader: { type: String, default: "" },
+    loaderVersion: { type: String, default: "" },
+    username: { type: String, default: "" },
+    uuid: { type: String, default: "" },
+    loginType: { type: String, default: "" },
+    version: { type: String, default: "" },
+    lanPorts: { type: Array, default: () => [] },
+    isLan: { type: Boolean, default: false },
+    selected: { type: Boolean, default: false },
+    loading: { type: Boolean, default: false },
+    // 接收索引，用于计算延迟
+    index: { type: Number, default: 0 }
+})
+</script>
+
+<template>
+    <div :class="[
+        'group card-v5 p-6 instance-card border-2 transition-all duration-300',
+        isLan && !loading
+            ? 'cursor-pointer bg-white hover:border-[#4DB7FF] hover:shadow-lg hover:-translate-y-1'
+            : 'bg-slate-50',
+        selected || loading ? 'border-[#4DB7FF] bg-white! shadow-md' : 'border-transparent',
+        !isLan ? 'opacity-60 cursor-not-allowed' : ''
+    ]" :style="{ '--delay': index }">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-5">
+                <div
+                    :class="`w-16 h-16 ${isLan ? 'bg-slate-100 text-white' : 'bg-slate-200 text-slate-400'} rounded-3xl flex items-center justify-center relative transition-colors group-hover:bg-blue-50`">
+                    <span class="font-black text-xl">
+                        <Icon v-if="loader == 'Forge'" icon="simple-icons:curseforge" class="w-12 h-12 text-black" />
+                        <Icon v-else-if="loader == 'Fabric'" icon="material-icon-theme:minecraft-fabric"
+                            class="w-12 h-12" />
+                        <img v-else-if="loader == 'Quilt'" src="/images/icon/quilt.png" class="w-full h-full"
+                            alt="quilt">
+                        <img v-else-if="loader == 'Newforge'" src="/images/icon/newforge.png" class="w-full h-full"
+                            alt="newforge">
+                        <Icon v-else icon="mdi:minecraft" class="w-12 h-12 text-success" />
+                    </span>
+                    <div v-if="isLan"
+                        class="absolute -top-1 -right-1 w-5 h-5 bg-success rounded-full border-4 border-white shadow-glow-success">
+                    </div>
+                </div>
+                <div>
+                    <h4 class="font-black text-slate-800 text-lg">{{ version || "Minecraft 未知版本" }}</h4>
+                    <p class="text-xs font-bold text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                        <span class="flex items-center gap-1">
+                            <Activity v-if="isLan" class="w-3 h-3 text-success" />
+                            <AlertCircle v-else class="w-3 h-3" />
+                            {{ isLan ? "局域网已开放" : "未开启局域网" }}
+                        </span>
+                        <span v-if="loaderVersion">{{ loaderVersion }}</span>
+                        <span v-if="username">{{ username }}</span>
+                        <span v-if="uuid" class="opacity-50 font-mono">{{ uuid }}</span>
+                    </p>
+                </div>
+            </div>
+
+            <div class="relative min-h-12 flex items-center">
+                <div v-if="isLan && !loading"
+                    class="flex items-center gap-6 transition-all duration-300 group-hover:opacity-0 group-hover:invisible group-hover:scale-95">
+                    <div class="text-right flex flex-col justify-end min-w-15">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">登录状态
+                        </p>
+                        <div class="h-8 flex items-center justify-end">
+                            <p v-if="loginType == 'msa'" class="text-lg font-black text-primary font-mono leading-none">
+                                微软登录</p>
+                            <p v-else class="text-sm font-black text-slate-400 leading-none">离线登录</p>
+                        </div>
+                    </div>
+                    <div class="text-right flex flex-col justify-end min-w-15">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">本地端口
+                        </p>
+                        <div class="h-8 flex items-center justify-end">
+                            <p class="text-2xl font-black text-primary font-mono leading-none">{{ lanPorts[0] || '---'
+                                }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="isLan" :class="[
+                    'flex items-center justify-end gap-2 transition-all duration-300 transform',
+                    loading ? 'opacity-100 visible translate-x-0' : 'absolute inset-0 opacity-0 invisible translate-x-4 group-hover:opacity-100 group-hover:visible group-hover:translate-x-0'
+                ]">
+                    <span class="text-lg font-black text-primary uppercase tracking-tight">{{ loading ? '正在创建...' :
+                        '创建房间' }}</span>
+                    <div
+                        class="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white shadow-lg shadow-primary/20">
+                        <Loader2 v-if="loading" class="w-6 h-6 animate-spin" />
+                        <Icon v-else icon="heroicons:arrow-right-20-solid" class="w-6 h-6" />
+                    </div>
+                </div>
+
+                <div v-if="!isLan" class="text-right flex flex-col justify-end min-w-15">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">状态</p>
+                    <div class="h-8 flex items-center justify-end">
+                        <p class="text-sm font-black text-slate-400 leading-none">未开启局域网</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<style scoped>
+.card-v5 {
+    border-radius: 3rem;
+    background: white;
+    border: 1px solid #F1F5F9;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.02);
+}
+
+.instance-card.selected {
+    border-color: #4DB7FF;
+    box-shadow: 0 0 0 4px rgba(77, 183, 255, 0.1);
+}
+
+.text-success {
+    color: #10b981;
+}
+
+.text-primary {
+    color: #4DB7FF;
+}
+
+.bg-primary {
+    background-color: #4DB7FF;
+}
+
+.shadow-glow-success {
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+}
+
+.instance-card:not(.opacity-60):hover {
+    box-shadow: 0 20px 40px rgba(77, 183, 255, 0.1);
+}
+</style>

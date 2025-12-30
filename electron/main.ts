@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import MinecraftDetector from './minecraft'
+import { initMinecraftProxy } from './minecraft-lan-proxy'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -26,6 +28,8 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 
 let win: BrowserWindow | null
 
+initMinecraftProxy(3);
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1200,
@@ -44,7 +48,7 @@ function createWindow() {
     useContentSize: true,
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
     webPreferences: {
-      nodeIntegration: false,
+      nodeIntegration: true,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.mjs'),
     },
@@ -62,14 +66,21 @@ function createWindow() {
   ipcMain.on('window:minimize', () => {
     win?.minimize()
   })
-  
+
   ipcMain.on('window:close', () => {
     win?.close()
   })
 
   // Test active push message to Renderer-process.
-  win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', (new Date).toLocaleString())
+  win.webContents.on('did-finish-load', async () => {
+
+    // try {
+    //   const mc = await MinecraftDetector.detectAll();
+    //   console.log(mc);
+    //   win?.webContents.send('main-process-message', mc)
+    // } catch (e) {
+    //   console.error("Minecraft detect failed:", e);
+    // }
   })
 
   if (VITE_DEV_SERVER_URL) {
@@ -92,7 +103,7 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('activate', () => {
+app.on('activate', async () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
@@ -100,4 +111,4 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(createWindow)
+app.whenReady().then(createWindow);

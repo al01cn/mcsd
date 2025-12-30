@@ -11,7 +11,7 @@ body {
   background-color: #F8FAFC;
   color: #1E293B;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 button:hover {
@@ -28,9 +28,9 @@ button:hover {
   justify-content: center;
   transition: all 0.3s var(--ease-spring);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
-  position: absolute;
+  position: fixed;
   bottom: 32px;
-  z-index: 50;
+  z-index: 1000;
 }
 
 .fab:hover {
