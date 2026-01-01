@@ -2,15 +2,11 @@
 import { ref, onMounted, nextTick } from 'vue';
 import { RotateCw, Loader2 } from "lucide-vue-next";
 import MinecraftClientCard from '../components/MinecraftClientCard.vue';
+import getDetect, { MinecraftProcessInfo } from '../lib/mcDetect';
 
 const loadingPid = ref<number | null>(null);
-const clients = ref<any[]>([]);
+const clients = ref<MinecraftProcessInfo[]>([]);
 const isRefreshing = ref(false);
-
-const rawData = [
-    { pid: 123, version: "1.19.2", loader: "Fabric", loaderVersion: "0.12.12", username: "Example", uuid: "1234567890", loginType: "offline", lanPorts: [25565] },
-    { pid: 456, version: "1.19.2", loader: "Forge", loaderVersion: "1.19.2-43.1.0", username: "Example", uuid: "1234567890", loginType: "offline", lanPorts: [] }
-];
 
 const refreshClients = async () => {
     if (isRefreshing.value) return;
@@ -19,16 +15,42 @@ const refreshClients = async () => {
     clients.value = []; // 先清空列表，触发“离场”动画
 
     // 模拟接口耗时
-    setTimeout(() => {
+    setTimeout(async () => {
+        // const data = await getDetect();
         isRefreshing.value = false;
         // nextTick 确保 Loading 消失后再开始填充数据，防止动画卡顿
         nextTick(() => {
-            clients.value = [...rawData];
+            clients.value = [
+                {
+                    pid: 0,
+                    java: "Java",
+                    version: "1.20.1",
+                    loader: "Vanilla",
+                    loaderVersion: "1.20.1",
+                    username: "OneTunnel",
+                    uuid: "00000000-0000-0000-0000-000000000000",
+                    loginType: "offline",
+                    lanPorts: [25565]
+                },
+                {
+                    pid: 2,
+                    java: "Java",
+                    version: "1.20.1",
+                    loader: "Forge",
+                    loaderVersion: undefined,
+                    username: "OneTunnel",
+                    uuid: "00000000-0000-0000-0000-000000000000",
+                    loginType: "offline",
+                    lanPorts: []
+                }
+            ]
         });
     }, 1000);
 };
 
-onMounted(() => { refreshClients(); });
+onMounted(async () => {
+    refreshClients();
+});
 
 const handleCardClick = (client: any) => {
     if (client.lanPorts.length === 0 || loadingPid.value !== null) return;
@@ -52,7 +74,7 @@ const handleCardClick = (client: any) => {
             </button>
         </div>
 
-        <div class="relative min-h-[400px]">
+        <div class="relative min-h-100">
             <div v-if="isRefreshing" class="absolute inset-0 flex flex-col items-center justify-center">
                 <Loader2 class="w-10 h-10 text-[#4DB7FF] animate-spin mb-4" />
                 <p class="text-slate-400 font-bold text-sm animate-pulse">正在查找游戏...</p>

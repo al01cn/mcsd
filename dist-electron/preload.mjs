@@ -24,3 +24,29 @@ electron.contextBridge.exposeInMainWorld("windowControl", {
   minimize: () => electron.ipcRenderer.send("window:minimize"),
   close: () => electron.ipcRenderer.send("window:close")
 });
+electron.contextBridge.exposeInMainWorld("mojang", {
+  getProfile: (uuid) => electron.ipcRenderer.invoke("mojang:getProfile", uuid)
+});
+electron.contextBridge.exposeInMainWorld("minecraft", {
+  getDetect() {
+    return electron.ipcRenderer.invoke("minecraft:detect");
+  }
+});
+electron.contextBridge.exposeInMainWorld("mcproxy", {
+  // 注意现在需要传 ID
+  /**
+   * 启动代理
+   * @param config ProxyConfig 对象
+   */
+  start: (config) => electron.ipcRenderer.send("mcproxy:start", config),
+  /**
+   * 停止指定代理
+   * @param id 实例 ID
+   */
+  stop: (id) => electron.ipcRenderer.send("mcproxy:stop", id),
+  /**
+  * 监听启动状态回调
+  * @param callback (event, {id, success}) => void
+  */
+  onStatus: (callback) => electron.ipcRenderer.on("mcproxy:status", callback)
+});

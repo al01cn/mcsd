@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
+@plugin "daisyui";
 
 :root {
   --ease-spring: cubic-bezier(0.4, 0.0, 0.2, 1);
@@ -16,6 +17,18 @@ body {
 
 button:hover {
   cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+a:hover {
+  cursor: pointer;
+}
+
+a:disabled {
+  cursor: not-allowed;
 }
 
 /* Floating Button */

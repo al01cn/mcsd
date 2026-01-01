@@ -2,8 +2,9 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import MinecraftDetector from './minecraft'
+import MinecraftDetector, { MinecraftProcessInfo } from './minecraft'
 import { initMinecraftProxy } from './minecraft-lan-proxy'
+import { getMojangProfile } from './mojang'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -47,6 +48,7 @@ function createWindow() {
     // 🧠 推荐开启
     useContentSize: true,
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
+    title: 'OneTunnel',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: true,
@@ -63,6 +65,17 @@ function createWindow() {
     win?.unmaximize()
   })
 
+  ipcMain.handle(
+    'mojang:getProfile',
+    async (_event, uuid: string) => {
+      return await getMojangProfile(uuid)
+    }
+  )
+
+  ipcMain.handle("minecraft:detect", async () => {
+    return await MinecraftDetector.detectAll();
+  });
+
   ipcMain.on('window:minimize', () => {
     win?.minimize()
   })
@@ -72,16 +85,8 @@ function createWindow() {
   })
 
   // Test active push message to Renderer-process.
-  win.webContents.on('did-finish-load', async () => {
-
-    // try {
-    //   const mc = await MinecraftDetector.detectAll();
-    //   console.log(mc);
-    //   win?.webContents.send('main-process-message', mc)
-    // } catch (e) {
-    //   console.error("Minecraft detect failed:", e);
-    // }
-  })
+  // win.webContents.on('did-finish-load', async () => {
+  // })
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
@@ -90,7 +95,6 @@ function createWindow() {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
 }
-
 
 
 // Quit when all windows are closed, except on macOS. There, it's common

@@ -1,15 +1,39 @@
 <script lang="ts" setup>
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { User, CloudLightning, Minus, X, ChevronDown, Settings2, LogOut } from 'lucide-vue-next';
 import { toast } from 'vue-sonner'
 import config from '../lib/config'
 import { Settings } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { getMinecraftHead } from '../lib/mcHead'
 
 const route = useRoute();
+const router = useRouter();
 
+const pages = ref([
+    {
+        name: '创建房间',
+        path: '/create_rooms'
+    },
+    {
+        name: '加入房间',
+        path: '/rooms'
+    },
+    {
+        name: '控制台',
+        path: '/console'
+    },
+    {
+        name: '节点管理',
+        path: '/network'
+    }
+])
+
+const isLogin = ref(false)
+const headImg = ref("")
 const isOpen = ref(false);
 const isModalOpen = ref(false);
+const hasPage = ref("/create_rooms")
 
 
 // 注意这里依赖 route.name 或 route.path
@@ -48,6 +72,21 @@ const confirmLogout = () => {
     closeLogoutModal()
 }
 
+const toPage = (e: Event, path: string) => {
+    // 1. 阻止 <RouterLink> 的默认 a 标签跳转
+    e.preventDefault();
+
+    // 2. 你的业务逻辑拦截
+    if (isModalOpen.value) {
+        toast('My first toast');
+        return; // 如果被拦截，直接返回，不执行跳转
+    }
+
+    // 3. 使用 router.push 执行手动跳转
+    router.push(path);
+    hasPage.value = path
+}
+
 // 点击页面其他地方关闭下拉菜单
 function handleClickOutside(event: MouseEvent) {
     const dropdown = document.getElementById('user-dropdown');
@@ -57,8 +96,11 @@ function handleClickOutside(event: MouseEvent) {
 }
 
 // 生命周期挂载和卸载事件监听
-onMounted(() => {
+onMounted(async () => {
     document.addEventListener('click', handleClickOutside);
+
+    const skin = await getMinecraftHead("https://textures.minecraft.net/texture/ab9b62d19c7b256940b0911eee3be99f84aa25a6decf89fd588f37a214cce8a")
+    headImg.value = skin
 });
 onBeforeUnmount(() => {
     document.removeEventListener('click', handleClickOutside);
@@ -85,30 +127,17 @@ const minimize = () => {
         </div>
 
         <nav class="flex items-center gap-4 h-full">
-            <RouterLink to="/create_rooms" active-class="active"
-                class="nav-tab font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-4">
-                创建房间
-            </RouterLink>
-            <RouterLink to="/rooms" active-class="active"
-                class="nav-tab font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-4">
-                加入房间
-            </RouterLink>
-            <RouterLink to="/console" active-class="active"
-                class="nav-tab font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-4">
-                控制台
-            </RouterLink>
-            <RouterLink to="/network" active-class="active"
-                class="nav-tab font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-4">
-                节点管理
-            </RouterLink>
+            <a v-for="page in pages" :key="page.name" @click.prevent="toPage($event, page.path)"
+                :class="`nav-tab font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-4 ${hasPage === page.path ? 'active' : ''}`">
+                {{ page.name }}
+            </a>
         </nav>
 
         <div class="flex items-center gap-1">
             <div class="relative">
                 <button @click="toggleUserDropdown"
                     class="flex items-center gap-2 p-1 pr-3 bg-white border-slate-100 rounded-xl transition-all">
-                    <img src="https://api.dicebear.com/7.x/notionists/svg?seed=Felix"
-                        class="w-8 h-8 rounded-lg bg-slate-100">
+                    <img :src="headImg" alt="head-avatar" class="w-8 h-8 rounded-lg bg-slate-100">
                     <ChevronDown class="w-3.5 h-3.5 text-slate-300" />
                 </button>
 

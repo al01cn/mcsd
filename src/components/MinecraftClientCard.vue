@@ -67,7 +67,7 @@ defineProps({
                         <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">登录状态
                         </p>
                         <div class="h-8 flex items-center justify-end">
-                            <p v-if="loginType == 'msa'" class="text-lg font-black text-primary font-mono leading-none">
+                            <p v-if="loginType == 'msa'" class="text-lg font-black text-primary leading-none">
                                 微软登录</p>
                             <p v-else class="text-sm font-black text-slate-400 leading-none">离线登录</p>
                         </div>
@@ -76,7 +76,7 @@ defineProps({
                         <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">本地端口
                         </p>
                         <div class="h-8 flex items-center justify-end">
-                            <p class="text-2xl font-black text-primary font-mono leading-none">{{ lanPorts[0] || '---'
+                            <p class="text-2xl font-black text-primary leading-none">{{ lanPorts[0] || '---'
                                 }}</p>
                         </div>
                     </div>
