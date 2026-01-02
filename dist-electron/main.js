@@ -5,13 +5,322 @@ import { ipcMain, app, BrowserWindow } from "electron";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path$1 from "node:path";
-import { exec, fork } from "child_process";
-import fs from "fs";
-import path from "path";
-import os from "os";
-import { promisify } from "util";
 import * as dgram from "dgram";
 import * as net from "net";
+import { fork, exec } from "child_process";
+import path from "path";
+import fs from "fs";
+import { webcrypto } from "node:crypto";
+import os from "os";
+import { promisify } from "util";
+class ProxyWorker {
+  constructor() {
+    __publicField(this, "udp", null);
+    __publicField(this, "tcp", null);
+    __publicField(this, "broadcastTimer", null);
+  }
+  start(config2) {
+    this.udp = dgram.createSocket({ type: "udp4", reuseAddr: true });
+    const msg = Buffer.from(`[MOTD]${config2.fakeMotd}[/MOTD][AD]${config2.localPort}[/AD]`);
+    this.broadcastTimer = setInterval(() => {
+      var _a;
+      try {
+        (_a = this.udp) == null ? void 0 : _a.send(msg, 0, msg.length, 4445, "224.0.2.60");
+      } catch (e) {
+      }
+    }, 1500);
+    this.tcp = net.createServer((c) => {
+      const r = new net.Socket();
+      c.pause();
+      c.setTimeout(1e4);
+      r.connect(config2.remotePort, config2.remoteHost, () => {
+        c.resume();
+        c.pipe(r);
+        r.pipe(c);
+      });
+      const end = () => {
+        c.destroy();
+        r.destroy();
+      };
+      c.on("error", end);
+      r.on("error", end);
+      c.on("close", end);
+      r.on("close", end);
+    });
+    this.tcp.on("error", () => process.exit(1));
+    this.tcp.listen(config2.localPort, "0.0.0.0");
+  }
+  stop() {
+    var _a, _b, _c;
+    if (this.broadcastTimer) clearInterval(this.broadcastTimer);
+    (_a = this.udp) == null ? void 0 : _a.removeAllListeners();
+    (_b = this.udp) == null ? void 0 : _b.close();
+    (_c = this.tcp) == null ? void 0 : _c.close();
+  }
+}
+class MinecraftProxyManager {
+  constructor(maxInstances) {
+    __publicField(this, "instances", /* @__PURE__ */ new Map());
+    __publicField(this, "portLock", /* @__PURE__ */ new Set());
+    __publicField(this, "maxInstances");
+    this.maxInstances = maxInstances;
+    this.setupIpc();
+  }
+  setupIpc() {
+    ipcMain.on("mcproxy:start", async (event, config2) => {
+      const success = await this.startInstance(config2);
+      event.reply("mcproxy:status", { id: config2.id, success });
+    });
+    ipcMain.on("mcproxy:stop", (_, id) => this.stopInstance(id));
+    app.on("before-quit", () => this.stopAll());
+  }
+  async startInstance(config2) {
+    if (this.instances.has(config2.id)) await this.stopInstance(config2.id);
+    if (this.instances.size >= this.maxInstances) return false;
+    if (this.portLock.has(config2.localPort)) return false;
+    try {
+      const child = fork(__filename, [], {
+        env: { ...process.env, IS_MINECRAFT_PROXY_WORKER: "true" },
+        stdio: ["ignore", "inherit", "inherit", "ipc"]
+      });
+      this.portLock.add(config2.localPort);
+      this.instances.set(config2.id, child);
+      child.send({ type: "START", payload: config2 });
+      child.on("exit", () => {
+        this.instances.delete(config2.id);
+        this.portLock.delete(config2.localPort);
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  async stopInstance(id) {
+    const child = this.instances.get(id);
+    if (child == null ? void 0 : child.connected) {
+      return new Promise((resolve) => {
+        child.once("exit", () => resolve());
+        child.send({ type: "STOP" });
+        setTimeout(() => {
+          child.kill("SIGKILL");
+          resolve();
+        }, 1e3);
+      });
+    }
+  }
+  stopAll() {
+    for (const id of this.instances.keys()) this.stopInstance(id);
+  }
+}
+const initMinecraftProxy = (max = 1) => {
+  return new MinecraftProxyManager(max);
+};
+if (process.env.IS_MINECRAFT_PROXY_WORKER === "true") {
+  const worker = new ProxyWorker();
+  process.on("message", (m) => {
+    if (m.type === "START") worker.start(m.payload);
+    if (m.type === "STOP") {
+      worker.stop();
+      process.exit(0);
+    }
+  });
+  process.on("disconnect", () => process.exit(0));
+}
+const urlAlphabet = "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict";
+const POOL_SIZE_MULTIPLIER = 128;
+let pool, poolOffset;
+function fillPool(bytes) {
+  if (!pool || pool.length < bytes) {
+    pool = Buffer.allocUnsafe(bytes * POOL_SIZE_MULTIPLIER);
+    webcrypto.getRandomValues(pool);
+    poolOffset = 0;
+  } else if (poolOffset + bytes > pool.length) {
+    webcrypto.getRandomValues(pool);
+    poolOffset = 0;
+  }
+  poolOffset += bytes;
+}
+function nanoid(size = 21) {
+  fillPool(size |= 0);
+  let id = "";
+  for (let i = poolOffset - size; i < poolOffset; i++) {
+    id += urlAlphabet[pool[i] & 63];
+  }
+  return id;
+}
+class Config {
+  constructor() {
+    __publicField(this, "name", "config");
+    __publicField(this, "dataDir");
+    __publicField(this, "configPath");
+    this.dataDir = path.join(app.getPath("userData"), "data");
+    this.configPath = path.join(this.dataDir, "config.json");
+    this.ensure();
+  }
+  /* ---------- Init ---------- */
+  ensure() {
+    if (!fs.existsSync(this.dataDir)) {
+      fs.mkdirSync(this.dataDir, { recursive: true });
+    }
+    if (!fs.existsSync(this.configPath)) {
+      const initial = {
+        platforms: []
+      };
+      this.write(initial);
+    }
+  }
+  /* ---------- Base IO ---------- */
+  read() {
+    try {
+      const raw = fs.readFileSync(this.configPath, "utf-8");
+      const parsed = JSON.parse(raw);
+      const platformsRaw = Array.isArray(
+        parsed.platforms
+      ) ? parsed.platforms : [];
+      const platforms = platformsRaw.map((p) => ({
+        nanoid: p.nanoid,
+        platform: p.platform,
+        secret: p.secret,
+        enabled: typeof p.enabled === "boolean" ? p.enabled : true
+      }));
+      return { platforms };
+    } catch {
+      return { platforms: [] };
+    }
+  }
+  write(data) {
+    fs.writeFileSync(
+      this.configPath,
+      JSON.stringify(data, null, 2),
+      "utf-8"
+    );
+  }
+  /* =======================
+     Platform APIs
+  ======================= */
+  getPlatforms() {
+    return this.read().platforms;
+  }
+  /** 只获取启用的平台（很常用） */
+  getEnabledPlatforms() {
+    return this.read().platforms.filter((p) => p.enabled);
+  }
+  getPlatform(nanoid2) {
+    return this.read().platforms.find((p) => p.nanoid === nanoid2);
+  }
+  addPlatform(platform) {
+    const cfg = this.read();
+    const newPlatform = {
+      nanoid: nanoid(),
+      platform: platform.platform,
+      secret: platform.secret,
+      enabled: true
+    };
+    cfg.platforms.push(newPlatform);
+    this.write(cfg);
+    return newPlatform;
+  }
+  updatePlatform(nanoid2, patch) {
+    const cfg = this.read();
+    const target = cfg.platforms.find((p) => p.nanoid === nanoid2);
+    if (!target) return;
+    Object.assign(target, patch);
+    this.write(cfg);
+  }
+  /** 快捷启用 */
+  enablePlatform(nanoid2) {
+    this.updatePlatform(nanoid2, { enabled: true });
+  }
+  /** 快捷禁用 */
+  disablePlatform(nanoid2) {
+    this.updatePlatform(nanoid2, { enabled: false });
+  }
+  removePlatform(nanoid2) {
+    const cfg = this.read();
+    cfg.platforms = cfg.platforms.filter((p) => p.nanoid !== nanoid2);
+    this.write(cfg);
+  }
+}
+function MinecraftTunnelName() {
+  return "mc-" + nanoid(8).toString();
+}
+class NatFrp {
+  static async userInfo(token) {
+    const res = await fetch(`${this.api_url}/user/info?token=${token}`, {
+      method: "GET"
+    });
+    if (!res.ok) {
+      return null;
+    }
+    return await res.json();
+  }
+  static async tunnelInfo(token) {
+    const res = await fetch(`${this.api_url}/tunnels/info?token=${token}`, {
+      method: "GET"
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const data = await res.json();
+    return {
+      length: data.length,
+      data
+    };
+  }
+  static async nodes(token) {
+    const res = await fetch(`${this.api_url}/nodes?token=${token}`, {
+      method: "GET"
+    });
+    if (!res.ok) {
+      return null;
+    }
+    return await res.json();
+  }
+  static async nodeStats(token) {
+    const res = await fetch(`${this.api_url}/node/stats?token=${token}`, {
+      method: "GET"
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const data = await res.json();
+    return data.nodes;
+  }
+  // 合并节点信息和状态
+  static async getMergedNodes(token) {
+    const nodesData = await this.nodes(token);
+    const statsData = await this.nodeStats(token);
+    if (!nodesData || !statsData) return null;
+    const merged = statsData.map((stat) => {
+      const nodeInfo = nodesData[stat.id];
+      if (!nodeInfo) {
+        return stat;
+      }
+      return { ...nodeInfo, ...stat };
+    });
+    return merged;
+  }
+  static async tunnelCreate(token, node, local_port) {
+    const tunnel_name = MinecraftTunnelName();
+    const raw = {
+      "name": tunnel_name,
+      "type": "tcp",
+      "node": node,
+      "local_ip": "127.0.0.1",
+      "local_port": local_port
+    };
+    const res = await fetch(`${this.api_url}/tunnels?token=${token}`, {
+      method: "POST",
+      body: JSON.stringify(raw)
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const data = await res.json();
+    return data;
+  }
+}
+__publicField(NatFrp, "api_url", "https://api.natfrp.com/v4");
 const execAsync = promisify(exec);
 class MinecraftDetector {
   static async runCMD(cmd) {
@@ -193,119 +502,6 @@ __publicField(MinecraftDetector, "MC_MAIN_CLASSES", [
   "org.multimc.Entry"
 ]);
 __publicField(MinecraftDetector, "MINECRAFT_DIR", path.join(os.homedir(), ".minecraft"));
-class ProxyWorker {
-  constructor() {
-    __publicField(this, "udp", null);
-    __publicField(this, "tcp", null);
-    __publicField(this, "broadcastTimer", null);
-  }
-  start(config) {
-    this.udp = dgram.createSocket({ type: "udp4", reuseAddr: true });
-    const msg = Buffer.from(`[MOTD]${config.fakeMotd}[/MOTD][AD]${config.localPort}[/AD]`);
-    this.broadcastTimer = setInterval(() => {
-      var _a;
-      try {
-        (_a = this.udp) == null ? void 0 : _a.send(msg, 0, msg.length, 4445, "224.0.2.60");
-      } catch (e) {
-      }
-    }, 1500);
-    this.tcp = net.createServer((c) => {
-      const r = new net.Socket();
-      c.pause();
-      c.setTimeout(1e4);
-      r.connect(config.remotePort, config.remoteHost, () => {
-        c.resume();
-        c.pipe(r);
-        r.pipe(c);
-      });
-      const end = () => {
-        c.destroy();
-        r.destroy();
-      };
-      c.on("error", end);
-      r.on("error", end);
-      c.on("close", end);
-      r.on("close", end);
-    });
-    this.tcp.on("error", () => process.exit(1));
-    this.tcp.listen(config.localPort, "0.0.0.0");
-  }
-  stop() {
-    var _a, _b, _c;
-    if (this.broadcastTimer) clearInterval(this.broadcastTimer);
-    (_a = this.udp) == null ? void 0 : _a.removeAllListeners();
-    (_b = this.udp) == null ? void 0 : _b.close();
-    (_c = this.tcp) == null ? void 0 : _c.close();
-  }
-}
-class MinecraftProxyManager {
-  constructor(maxInstances) {
-    __publicField(this, "instances", /* @__PURE__ */ new Map());
-    __publicField(this, "portLock", /* @__PURE__ */ new Set());
-    __publicField(this, "maxInstances");
-    this.maxInstances = maxInstances;
-    this.setupIpc();
-  }
-  setupIpc() {
-    ipcMain.on("mcproxy:start", async (event, config) => {
-      const success = await this.startInstance(config);
-      event.reply("mcproxy:status", { id: config.id, success });
-    });
-    ipcMain.on("mcproxy:stop", (_, id) => this.stopInstance(id));
-    app.on("before-quit", () => this.stopAll());
-  }
-  async startInstance(config) {
-    if (this.instances.has(config.id)) await this.stopInstance(config.id);
-    if (this.instances.size >= this.maxInstances) return false;
-    if (this.portLock.has(config.localPort)) return false;
-    try {
-      const child = fork(__filename, [], {
-        env: { ...process.env, IS_MINECRAFT_PROXY_WORKER: "true" },
-        stdio: ["ignore", "inherit", "inherit", "ipc"]
-      });
-      this.portLock.add(config.localPort);
-      this.instances.set(config.id, child);
-      child.send({ type: "START", payload: config });
-      child.on("exit", () => {
-        this.instances.delete(config.id);
-        this.portLock.delete(config.localPort);
-      });
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-  async stopInstance(id) {
-    const child = this.instances.get(id);
-    if (child == null ? void 0 : child.connected) {
-      return new Promise((resolve) => {
-        child.once("exit", () => resolve());
-        child.send({ type: "STOP" });
-        setTimeout(() => {
-          child.kill("SIGKILL");
-          resolve();
-        }, 1e3);
-      });
-    }
-  }
-  stopAll() {
-    for (const id of this.instances.keys()) this.stopInstance(id);
-  }
-}
-const initMinecraftProxy = (max = 1) => {
-  return new MinecraftProxyManager(max);
-};
-if (process.env.IS_MINECRAFT_PROXY_WORKER === "true") {
-  const worker = new ProxyWorker();
-  process.on("message", (m) => {
-    if (m.type === "START") worker.start(m.payload);
-    if (m.type === "STOP") {
-      worker.stop();
-      process.exit(0);
-    }
-  });
-  process.on("disconnect", () => process.exit(0));
-}
 async function getMojangProfile(uuid) {
   try {
     const res = await fetch(
@@ -334,6 +530,93 @@ async function getMojangProfile(uuid) {
       errorMessage: (err == null ? void 0 : err.message) || "Network error"
     };
   }
+}
+const config = new Config();
+function loadIcpMain(ipcMain2, win2) {
+  ipcMain2.handle("platform:list", () => {
+    return config.getPlatforms();
+  });
+  ipcMain2.handle(
+    "platform:add",
+    (_e, platform) => {
+      return config.addPlatform(platform);
+    }
+  );
+  ipcMain2.handle(
+    "platform:update",
+    (_e, nanoid2, patch) => {
+      config.updatePlatform(nanoid2, patch);
+    }
+  );
+  ipcMain2.handle(
+    "platform:enable",
+    (_e, nanoid2) => {
+      config.enablePlatform(nanoid2);
+    }
+  );
+  ipcMain2.handle(
+    "platform:disable",
+    (_e, nanoid2) => {
+      config.disablePlatform(nanoid2);
+    }
+  );
+  ipcMain2.handle(
+    "platform:remove",
+    (_e, nanoid2) => {
+      config.removePlatform(nanoid2);
+    }
+  );
+  ipcMain2.handle(
+    "mojang:getProfile",
+    async (_event, uuid) => {
+      return await getMojangProfile(uuid);
+    }
+  );
+  ipcMain2.handle(
+    "frp:natfrp.userInfo",
+    async (_event, token) => {
+      return await NatFrp.userInfo(token);
+    }
+  );
+  ipcMain2.handle(
+    "frp:natfrp.getNodes",
+    async (_event, token) => {
+      return await NatFrp.nodes(token);
+    }
+  );
+  ipcMain2.handle(
+    "frp:natfrp.nodeStats",
+    async (_event, token) => {
+      return await NatFrp.nodeStats(token);
+    }
+  );
+  ipcMain2.handle(
+    "frp:natfrp.getMergedNodes",
+    async (_event, token) => {
+      return await NatFrp.getMergedNodes(token);
+    }
+  );
+  ipcMain2.handle(
+    "frp:natfrp.getTunnels",
+    async (_event, token) => {
+      return await NatFrp.tunnelInfo(token);
+    }
+  );
+  ipcMain2.handle(
+    "frp:natfrp.tunnelCreate",
+    async (_event, token, node, local_port) => {
+      return await NatFrp.tunnelCreate(token, node, local_port);
+    }
+  );
+  ipcMain2.handle("minecraft:detect", async () => {
+    return await MinecraftDetector.detectAll();
+  });
+  ipcMain2.on("window:minimize", () => {
+    win2 == null ? void 0 : win2.minimize();
+  });
+  ipcMain2.on("window:close", () => {
+    win2 == null ? void 0 : win2.close();
+  });
 }
 createRequire(import.meta.url);
 const __dirname$1 = path$1.dirname(fileURLToPath(import.meta.url));
@@ -371,21 +654,7 @@ function createWindow() {
   win.on("maximize", () => {
     win == null ? void 0 : win.unmaximize();
   });
-  ipcMain.handle(
-    "mojang:getProfile",
-    async (_event, uuid) => {
-      return await getMojangProfile(uuid);
-    }
-  );
-  ipcMain.handle("minecraft:detect", async () => {
-    return await MinecraftDetector.detectAll();
-  });
-  ipcMain.on("window:minimize", () => {
-    win == null ? void 0 : win.minimize();
-  });
-  ipcMain.on("window:close", () => {
-    win == null ? void 0 : win.close();
-  });
+  loadIcpMain(ipcMain, win);
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL);
   } else {

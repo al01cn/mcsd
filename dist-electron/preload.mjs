@@ -32,6 +32,22 @@ electron.contextBridge.exposeInMainWorld("minecraft", {
     return electron.ipcRenderer.invoke("minecraft:detect");
   }
 });
+electron.contextBridge.exposeInMainWorld("frp", {
+  natfrp_getNodes: (token) => electron.ipcRenderer.invoke("frp:natfrp.getNodes", token),
+  natfrp_nodeStats: (token) => electron.ipcRenderer.invoke("frp:natfrp.nodeStats", token),
+  natfrp_getMergedNodes: (token) => electron.ipcRenderer.invoke("frp:natfrp.getMergedNodes", token),
+  natfrp_tunnelInfo: (token) => electron.ipcRenderer.invoke("frp:natfrp.tunnelInfo", token),
+  natfrp_tunnelCreate: (token, node, local_port) => electron.ipcRenderer.invoke("frp:natfrp.tunnelCreate", token, node, local_port),
+  natfrp_userInfo: (token) => electron.ipcRenderer.invoke("frp:natfrp.userInfo", token)
+});
+electron.contextBridge.exposeInMainWorld("platformAPI", {
+  list: () => electron.ipcRenderer.invoke("platform:list"),
+  add: (platform) => electron.ipcRenderer.invoke("platform:add", platform),
+  update: (nanoid, patch) => electron.ipcRenderer.invoke("platform:update", nanoid, patch),
+  enable: (nanoid) => electron.ipcRenderer.invoke("platform:enable", nanoid),
+  disable: (nanoid) => electron.ipcRenderer.invoke("platform:disable", nanoid),
+  remove: (nanoid) => electron.ipcRenderer.invoke("platform:remove", nanoid)
+});
 electron.contextBridge.exposeInMainWorld("mcproxy", {
   // 注意现在需要传 ID
   /**

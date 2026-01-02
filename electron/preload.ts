@@ -1,5 +1,6 @@
 import { ipcRenderer, contextBridge } from 'electron'
 import { MinecraftProcessInfo } from './minecraft'
+import { PlatformConfig } from './config'
 
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('ipcRenderer', {
@@ -39,6 +40,45 @@ contextBridge.exposeInMainWorld('minecraft', {
     return ipcRenderer.invoke("minecraft:detect");
   }
 })
+
+contextBridge.exposeInMainWorld("frp", {
+  natfrp_getNodes: (token: string) =>
+    ipcRenderer.invoke("frp:natfrp.getNodes", token),
+  natfrp_nodeStats: (token: string) =>
+    ipcRenderer.invoke("frp:natfrp.nodeStats", token),
+  natfrp_getMergedNodes: (token: string) =>
+    ipcRenderer.invoke("frp:natfrp.getMergedNodes", token),
+  natfrp_tunnelInfo: (token: string) =>
+    ipcRenderer.invoke("frp:natfrp.tunnelInfo", token),
+  natfrp_tunnelCreate: (token: string, node: number, local_port: number) =>
+    ipcRenderer.invoke("frp:natfrp.tunnelCreate", token, node, local_port),
+  natfrp_userInfo: (token: string) =>
+    ipcRenderer.invoke("frp:natfrp.userInfo", token),
+});
+
+contextBridge.exposeInMainWorld("platformAPI", {
+  list: (): Promise<PlatformConfig[]> =>
+    ipcRenderer.invoke("platform:list"),
+
+  add: (platform: Omit<PlatformConfig, "nanoid">) =>
+    ipcRenderer.invoke("platform:add", platform),
+
+  update: (
+    nanoid: string,
+    patch: Partial<Omit<PlatformConfig, "nanoid">>
+  ) => ipcRenderer.invoke("platform:update", nanoid, patch),
+
+  enable: (
+    nanoid: string,
+  ) => ipcRenderer.invoke("platform:enable", nanoid),
+
+  disable: (
+    nanoid: string,
+  ) => ipcRenderer.invoke("platform:disable", nanoid),
+
+  remove: (nanoid: string) =>
+    ipcRenderer.invoke("platform:remove", nanoid)
+});
 
 contextBridge.exposeInMainWorld('mcproxy', {
   // 注意现在需要传 ID

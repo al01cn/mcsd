@@ -2,9 +2,11 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import MinecraftDetector, { MinecraftProcessInfo } from './minecraft'
+import MinecraftDetector from './minecraft'
 import { initMinecraftProxy } from './minecraft-lan-proxy'
 import { getMojangProfile } from './mojang'
+import Config, { PlatformConfig } from './config'
+import { loadIcpMain } from './ipcMain'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -65,27 +67,11 @@ function createWindow() {
     win?.unmaximize()
   })
 
-  ipcMain.handle(
-    'mojang:getProfile',
-    async (_event, uuid: string) => {
-      return await getMojangProfile(uuid)
-    }
-  )
-
-  ipcMain.handle("minecraft:detect", async () => {
-    return await MinecraftDetector.detectAll();
-  });
-
-  ipcMain.on('window:minimize', () => {
-    win?.minimize()
-  })
-
-  ipcMain.on('window:close', () => {
-    win?.close()
-  })
+  loadIcpMain(ipcMain, win)
 
   // Test active push message to Renderer-process.
   // win.webContents.on('did-finish-load', async () => {
+
   // })
 
   if (VITE_DEV_SERVER_URL) {

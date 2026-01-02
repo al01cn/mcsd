@@ -33,7 +33,6 @@ const isLogin = ref(false)
 const headImg = ref("")
 const isOpen = ref(false);
 const isModalOpen = ref(false);
-const hasPage = ref("/create_rooms")
 
 
 // 注意这里依赖 route.name 或 route.path
@@ -43,6 +42,11 @@ const showSettingsButton = computed(() => {
     // 或者用 path 判断
     // return route.path !== '/settings';
 });
+
+const isActive = (path: string) => {
+    // 只有当前 path 在 pages 里面才判断高亮
+    return pages.value.some(p => p.path === route.path && p.path === path)
+}
 
 function toggleUserDropdown(event: Event) {
     event.stopPropagation();
@@ -84,7 +88,6 @@ const toPage = (e: Event, path: string) => {
 
     // 3. 使用 router.push 执行手动跳转
     router.push(path);
-    hasPage.value = path
 }
 
 // 点击页面其他地方关闭下拉菜单
@@ -128,7 +131,7 @@ const minimize = () => {
 
         <nav class="flex items-center gap-4 h-full">
             <a v-for="page in pages" :key="page.name" @click.prevent="toPage($event, page.path)"
-                :class="`nav-tab font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-4 ${hasPage === page.path ? 'active' : ''}`">
+                :class="`nav-tab font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-4 ${isActive(page.path) ? 'active' : ''}`">
                 {{ page.name }}
             </a>
         </nav>
@@ -195,7 +198,7 @@ const minimize = () => {
                         class="w-16 h-16 bg-red-50 text-error rounded-2xl flex items-center justify-center mx-auto mb-5">
                         <LogOut class="w-7 h-7" />
                     </div>
-                    <h3 class="text-lg font-black text-slate-800 mb-1.5">退出 SkyLink？</h3>
+                    <h3 class="text-lg font-black text-slate-800 mb-1.5">退出 {{ config.appName }}？</h3>
                     <p class="text-slate-500 text-[13px] font-medium leading-relaxed">
                         退出后将断开所有联机节点。
                     </p>
