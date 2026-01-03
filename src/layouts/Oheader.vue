@@ -1,11 +1,12 @@
 <script lang="ts" setup>
 import { useRoute, useRouter } from 'vue-router'
-import { User, CloudLightning, Minus, X, ChevronDown, Settings2, LogOut } from 'lucide-vue-next';
+import { User, CloudLightning, Minus, X, ChevronDown, Settings2, LogOut, BadgeAlert } from 'lucide-vue-next';
 import { toast } from 'vue-sonner'
 import config from '../lib/config'
 import { Settings } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { getMinecraftHead } from '../lib/mcHead'
+import { useCountdown } from '../lib/useCountdown';
 
 const route = useRoute();
 const router = useRouter();
@@ -29,10 +30,23 @@ const pages = ref([
     }
 ])
 
-const isLogin = ref(false)
+const timeSakuraFrp = ref(0)
+const isSakuraFrp = ref(false)
+const isSakuraFrpInstalled = ref(false)
+const SakuraFrpProgress = ref(0)
 const headImg = ref("")
 const isOpen = ref(false);
 const isModalOpen = ref(false);
+
+const isRuning = ref(false)
+
+const { start } = useCountdown(timeSakuraFrp, 5, {
+    async onFinish() {
+        console.log('倒计时结束');
+        await (window as any).sakurafrp.download()
+        return
+    }
+})
 
 
 // 注意这里依赖 route.name 或 route.path
@@ -76,9 +90,38 @@ const confirmLogout = () => {
     closeLogoutModal()
 }
 
+async function hasSakuraFrp() {
+    const hasSakuraFrp = await (window as any).sakurafrp.exists()
+    isSakuraFrpInstalled.value = hasSakuraFrp
+    if (!hasSakuraFrp) {
+        start()
+        return
+    } else {
+        isSakuraFrp.value = false
+        return
+    }
+}
+
+const closeSakuraFrpModal = () => {
+    if (!isSakuraFrpInstalled.value) {
+        return
+    }
+    isSakuraFrp.value = !isSakuraFrp.value
+}
+
+
 const toPage = (e: Event, path: string) => {
     // 1. 阻止 <RouterLink> 的默认 a 标签跳转
     e.preventDefault();
+
+    if (isSakuraFrp.value) {
+        toast.error('未下载核心文件，软件无法正常使用');
+        return
+    }
+
+    if (isRuning.value) {
+        toast.error('隧道正在运行，请先停止');
+    }
 
     // 2. 你的业务逻辑拦截
     if (isModalOpen.value) {
@@ -104,6 +147,18 @@ onMounted(async () => {
 
     const skin = await getMinecraftHead("https://textures.minecraft.net/texture/ab9b62d19c7b256940b0911eee3be99f84aa25a6decf89fd588f37a214cce8a")
     headImg.value = skin
+
+    await hasSakuraFrp();
+
+    if (!isSakuraFrpInstalled.value) {
+        (window as any).sakurafrp.onProgress(async (p: number) => {
+            SakuraFrpProgress.value = p
+            if (p <= 100) {
+                await hasSakuraFrp();
+                return
+            }
+        })
+    }
 });
 onBeforeUnmount(() => {
     document.removeEventListener('click', handleClickOutside);
@@ -211,6 +266,39 @@ const minimize = () => {
                     <button @click="confirmLogout()"
                         class="flex-1 py-3 rounded-xl font-bold text-white bg-error hover:bg-red-500 transition-all active:scale-95 text-[13px]">
                         确认退出
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div
+            :class="`${isSakuraFrp ? 'show-modal' : 'hidden-modal'} absolute inset-0 z-200 flex items-center justify-center px-4 transition-all duration-300`">
+            <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-md" @click="closeSakuraFrpModal()"></div>
+            <div
+                class="modal-content relative bg-white w-full max-w-85 rounded-4xl shadow-modal border border-slate-100 overflow-hidden transition-all duration-300">
+                <!-- Header -->
+                <div class="p-8 pb-0 text-center">
+                    <div
+                        class="w-16 h-16 bg-blue-50 text-error rounded-2xl flex items-center justify-center mx-auto mb-5">
+                        <BadgeAlert class="w-8 h-8" />
+                    </div>
+                    <h3 class="text-xl font-black text-slate-800 mb-2">系统检测</h3>
+                    <p class="text-slate-400 text-[11px] font-bold uppercase tracking-widest">内网穿透核心文件未找到</p>
+                </div>
+
+                <div class="p-8 pt-4 space-y-5">
+                    <!-- 基础选项 (必须) -->
+                    <div class="flex flex-col gap-1 justify-center items-center">
+                        <progress class="progress progress-info w-full" :value="SakuraFrpProgress" max="100"></progress>
+                        <!-- <span class="label text-black text-center">加载中...</span> -->
+                    </div>
+                </div>
+
+                <div class="flex gap-2.5 p-5 pt-0 items-center justify-center">
+                    <span v-if="!isSakuraFrpInstalled" class="text-sm">{{ timeSakuraFrp }}秒钟后自动下载...</span>
+                    <button v-else @click="closeSakuraFrpModal()"
+                        class="flex-1 py-3 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors text-[13px]">
+                        取消
                     </button>
                 </div>
             </div>

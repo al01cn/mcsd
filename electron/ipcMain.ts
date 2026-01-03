@@ -2,8 +2,9 @@ import Config, { PlatformConfig } from "./config";
 import { NatFrp } from "./frp";
 import MinecraftDetector from "./minecraft";
 import { getMojangProfile } from "./mojang";
+import { getLatestWindowsSakuraFrp, SakuraFrpDownloader } from "./SakuraFrpDownloader";
 const config = new Config();
-
+const downloader = new SakuraFrpDownloader()
 
 export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWindow) {
     // 配置
@@ -95,6 +96,35 @@ export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWind
         }
     )
 
+    ipcMain.handle(
+        'frp:natfrp.tunnelEdit',
+        async (_event, token: string, tunnel_id: number, local_port: number) => {
+            return await NatFrp.tunnelEdit(token, tunnel_id, local_port)
+        }
+    )
+
+    /** 前端判断是否存在 */
+    ipcMain.handle('sakurafrp:exists', () => {
+        return downloader.exists()
+    })
+
+    ipcMain.handle('sakurafrp:download', async (event) => {
+        const data = await NatFrp.clients()
+        const info = getLatestWindowsSakuraFrp(data)
+
+        await downloader.download(
+            info.url,
+            info.hash,
+            percent => {
+                event.sender.send('sakurafrp:progress', percent)
+            }
+        )
+
+        return {
+            version: info.version,
+            path: downloader.filePath
+        }
+    })
 
     // 检测 Minecraft
     ipcMain.handle("minecraft:detect", async () => {

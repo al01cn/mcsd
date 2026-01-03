@@ -52,8 +52,16 @@ export class NatFrp {
         return (await res.json()) as NatFrpUserInfo;
     }
 
+    static async clients(){
+        const res = await fetch(`${this.api_url}/system/clients`, {
+            method: "GET",
+        })
+
+        return (await res.json()) as any;
+    }
+    
     static async tunnelInfo(token: string) {
-        const res = await fetch(`${this.api_url}/tunnels/info?token=${token}`, {
+        const res = await fetch(`${this.api_url}/tunnels?token=${token}`, {
             method: "GET",
         })
 
@@ -61,11 +69,7 @@ export class NatFrp {
             return null;
         }
 
-        const data = await res.json();
-        return {
-            length: data.length,
-            data: data
-        }
+        return (await res.json()) as any;
     }
 
     static async nodes(token: string) {
@@ -133,5 +137,23 @@ export class NatFrp {
 
         const data = await res.json();
         return data;
+    }
+
+    static async tunnelEdit(token: string, tunnel_id: number, local_port: number) {
+        const raw = {
+            "id": tunnel_id,
+            local_port: local_port
+        }
+
+        const res = await fetch(`${this.api_url}/tunnel/edit??token=${token}`, {
+            method: "POST",
+            body: JSON.stringify(raw),
+        })
+
+        if (!res.ok) {
+            return null;
+        }
+
+        return true;
     }
 }

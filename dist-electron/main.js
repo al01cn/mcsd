@@ -13,6 +13,8 @@ import fs from "fs";
 import { webcrypto } from "node:crypto";
 import os from "os";
 import { promisify } from "util";
+import https from "https";
+import crypto from "crypto";
 class ProxyWorker {
   constructor() {
     __publicField(this, "udp", null);
@@ -254,18 +256,20 @@ class NatFrp {
     }
     return await res.json();
   }
+  static async clients() {
+    const res = await fetch(`${this.api_url}/system/clients`, {
+      method: "GET"
+    });
+    return await res.json();
+  }
   static async tunnelInfo(token) {
-    const res = await fetch(`${this.api_url}/tunnels/info?token=${token}`, {
+    const res = await fetch(`${this.api_url}/tunnels?token=${token}`, {
       method: "GET"
     });
     if (!res.ok) {
       return null;
     }
-    const data = await res.json();
-    return {
-      length: data.length,
-      data
-    };
+    return await res.json();
   }
   static async nodes(token) {
     const res = await fetch(`${this.api_url}/nodes?token=${token}`, {
@@ -318,6 +322,20 @@ class NatFrp {
     }
     const data = await res.json();
     return data;
+  }
+  static async tunnelEdit(token, tunnel_id, local_port) {
+    const raw = {
+      "id": tunnel_id,
+      local_port
+    };
+    const res = await fetch(`${this.api_url}/tunnel/edit??token=${token}`, {
+      method: "POST",
+      body: JSON.stringify(raw)
+    });
+    if (!res.ok) {
+      return null;
+    }
+    return true;
   }
 }
 __publicField(NatFrp, "api_url", "https://api.natfrp.com/v4");
@@ -531,7 +549,84 @@ async function getMojangProfile(uuid) {
     };
   }
 }
+function getLatestWindowsSakuraFrp(apiData) {
+  const archPriority = [
+    "windows_amd64",
+    "windows_arm64",
+    "windows_386"
+  ];
+  for (const arch of archPriority) {
+    const item = apiData.frpc.archs[arch];
+    if (item) {
+      return {
+        version: apiData.frpc.ver,
+        arch,
+        url: item.url,
+        hash: item.hash,
+        size: item.size
+      };
+    }
+  }
+  throw new Error("未找到 Windows 平台 frpc");
+}
+class SakuraFrpDownloader {
+  constructor() {
+    /** 本地统一名称 */
+    __publicField(this, "fileName", "sakurafrp.exe");
+  }
+  get binDir() {
+    return path.join(app.getPath("userData"), "bin");
+  }
+  get filePath() {
+    return path.join(this.binDir, this.fileName);
+  }
+  exists() {
+    return fs.existsSync(this.filePath);
+  }
+  async download(url, expectedHash, onProgress) {
+    fs.mkdirSync(this.binDir, { recursive: true });
+    const tempPath = this.filePath + ".download";
+    return new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(tempPath);
+      const md5 = crypto.createHash("md5");
+      https.get(url, (res) => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`下载失败，HTTP ${res.statusCode}`));
+          return;
+        }
+        const total = Number(res.headers["content-length"] || 0);
+        let received = 0;
+        res.on("data", (chunk) => {
+          received += chunk.length;
+          md5.update(chunk);
+          if (total && onProgress) {
+            onProgress(Math.floor(received / total * 100));
+          }
+        });
+        res.pipe(file);
+        file.on("finish", () => {
+          file.close();
+          if (expectedHash) {
+            const fileHash = md5.digest("hex");
+            if (fileHash !== expectedHash) {
+              fs.unlinkSync(tempPath);
+              reject(new Error("sakurafrp.exe 校验失败"));
+              return;
+            }
+          }
+          fs.renameSync(tempPath, this.filePath);
+          resolve(this.filePath);
+        });
+      }).on("error", (err) => {
+        fs.unlink(tempPath, () => {
+        });
+        reject(err);
+      });
+    });
+  }
+}
 const config = new Config();
+const downloader = new SakuraFrpDownloader();
 function loadIcpMain(ipcMain2, win2) {
   ipcMain2.handle("platform:list", () => {
     return config.getPlatforms();
@@ -608,6 +703,30 @@ function loadIcpMain(ipcMain2, win2) {
       return await NatFrp.tunnelCreate(token, node, local_port);
     }
   );
+  ipcMain2.handle(
+    "frp:natfrp.tunnelEdit",
+    async (_event, token, tunnel_id, local_port) => {
+      return await NatFrp.tunnelEdit(token, tunnel_id, local_port);
+    }
+  );
+  ipcMain2.handle("sakurafrp:exists", () => {
+    return downloader.exists();
+  });
+  ipcMain2.handle("sakurafrp:download", async (event) => {
+    const data = await NatFrp.clients();
+    const info = getLatestWindowsSakuraFrp(data);
+    await downloader.download(
+      info.url,
+      info.hash,
+      (percent) => {
+        event.sender.send("sakurafrp:progress", percent);
+      }
+    );
+    return {
+      version: info.version,
+      path: downloader.filePath
+    };
+  });
   ipcMain2.handle("minecraft:detect", async () => {
     return await MinecraftDetector.detectAll();
   });

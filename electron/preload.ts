@@ -49,12 +49,22 @@ contextBridge.exposeInMainWorld("frp", {
   natfrp_getMergedNodes: (token: string) =>
     ipcRenderer.invoke("frp:natfrp.getMergedNodes", token),
   natfrp_tunnelInfo: (token: string) =>
-    ipcRenderer.invoke("frp:natfrp.tunnelInfo", token),
+    ipcRenderer.invoke("frp:natfrp.getTunnels", token),
   natfrp_tunnelCreate: (token: string, node: number, local_port: number) =>
     ipcRenderer.invoke("frp:natfrp.tunnelCreate", token, node, local_port),
   natfrp_userInfo: (token: string) =>
     ipcRenderer.invoke("frp:natfrp.userInfo", token),
 });
+
+contextBridge.exposeInMainWorld('sakurafrp', {
+  exists: (): Promise<boolean> => {
+    return ipcRenderer.invoke('sakurafrp:exists')
+  },
+  download: () => ipcRenderer.invoke('sakurafrp:download'),
+  onProgress: (cb: (percent: number) => void) => {
+    ipcRenderer.on('sakurafrp:progress', (_, percent) => cb(percent))
+  }
+})
 
 contextBridge.exposeInMainWorld("platformAPI", {
   list: (): Promise<PlatformConfig[]> =>

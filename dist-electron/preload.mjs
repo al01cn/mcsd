@@ -36,9 +36,18 @@ electron.contextBridge.exposeInMainWorld("frp", {
   natfrp_getNodes: (token) => electron.ipcRenderer.invoke("frp:natfrp.getNodes", token),
   natfrp_nodeStats: (token) => electron.ipcRenderer.invoke("frp:natfrp.nodeStats", token),
   natfrp_getMergedNodes: (token) => electron.ipcRenderer.invoke("frp:natfrp.getMergedNodes", token),
-  natfrp_tunnelInfo: (token) => electron.ipcRenderer.invoke("frp:natfrp.tunnelInfo", token),
+  natfrp_tunnelInfo: (token) => electron.ipcRenderer.invoke("frp:natfrp.getTunnels", token),
   natfrp_tunnelCreate: (token, node, local_port) => electron.ipcRenderer.invoke("frp:natfrp.tunnelCreate", token, node, local_port),
   natfrp_userInfo: (token) => electron.ipcRenderer.invoke("frp:natfrp.userInfo", token)
+});
+electron.contextBridge.exposeInMainWorld("sakurafrp", {
+  exists: () => {
+    return electron.ipcRenderer.invoke("sakurafrp:exists");
+  },
+  download: () => electron.ipcRenderer.invoke("sakurafrp:download"),
+  onProgress: (cb) => {
+    electron.ipcRenderer.on("sakurafrp:progress", (_, percent) => cb(percent));
+  }
 });
 electron.contextBridge.exposeInMainWorld("platformAPI", {
   list: () => electron.ipcRenderer.invoke("platform:list"),
