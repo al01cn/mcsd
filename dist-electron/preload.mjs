@@ -30,7 +30,15 @@ electron.contextBridge.exposeInMainWorld("mojang", {
 electron.contextBridge.exposeInMainWorld("minecraft", {
   getDetect() {
     return electron.ipcRenderer.invoke("minecraft:detect");
-  }
+  },
+  /**
+  * 获取 Minecraft 服务器状态
+  * @param host 服务器地址
+  * @param port 服务器端口
+  * @param timeout 超时时间（可选）
+  * @returns Promise<StatusResponse>
+  */
+  getServerStatus: (host, port, timeout) => electron.ipcRenderer.invoke("minecraft:status", host, port, timeout)
 });
 electron.contextBridge.exposeInMainWorld("frp", {
   natfrp_getNodes: (token) => electron.ipcRenderer.invoke("frp:natfrp.getNodes", token),
@@ -38,6 +46,7 @@ electron.contextBridge.exposeInMainWorld("frp", {
   natfrp_getMergedNodes: (token) => electron.ipcRenderer.invoke("frp:natfrp.getMergedNodes", token),
   natfrp_tunnelInfo: (token) => electron.ipcRenderer.invoke("frp:natfrp.getTunnels", token),
   natfrp_tunnelCreate: (token, node, local_port) => electron.ipcRenderer.invoke("frp:natfrp.tunnelCreate", token, node, local_port),
+  natfrp_tunnelEdit: (token, tunnel_id, port) => electron.ipcRenderer.invoke("frp:natfrp.tunnelEdit", token, tunnel_id, port),
   natfrp_userInfo: (token) => electron.ipcRenderer.invoke("frp:natfrp.userInfo", token)
 });
 electron.contextBridge.exposeInMainWorld("sakurafrp", {
@@ -47,6 +56,11 @@ electron.contextBridge.exposeInMainWorld("sakurafrp", {
   download: () => electron.ipcRenderer.invoke("sakurafrp:download"),
   onProgress: (cb) => {
     electron.ipcRenderer.on("sakurafrp:progress", (_, percent) => cb(percent));
+  },
+  start: (token, tunnelId) => electron.ipcRenderer.invoke("frpc:start", token, tunnelId),
+  stop: (tunnelId) => electron.ipcRenderer.invoke("frpc:stop", tunnelId),
+  onLog: (callback) => {
+    electron.ipcRenderer.on("frpc:log", (_, data) => callback(data));
   }
 });
 electron.contextBridge.exposeInMainWorld("platformAPI", {
@@ -58,20 +72,21 @@ electron.contextBridge.exposeInMainWorld("platformAPI", {
   remove: (nanoid) => electron.ipcRenderer.invoke("platform:remove", nanoid)
 });
 electron.contextBridge.exposeInMainWorld("mcproxy", {
-  // 注意现在需要传 ID
   /**
-   * 启动代理
-   * @param config ProxyConfig 对象
-   */
+       * @param config { id, remoteHost, remotePort, localPort, fakeMotd }
+       */
   start: (config) => electron.ipcRenderer.send("mcproxy:start", config),
-  /**
-   * 停止指定代理
-   * @param id 实例 ID
-   */
   stop: (id) => electron.ipcRenderer.send("mcproxy:stop", id),
   /**
-  * 监听启动状态回调
-  * @param callback (event, {id, success}) => void
-  */
-  onStatus: (callback) => electron.ipcRenderer.on("mcproxy:status", callback)
+   * 监听状态回调
+   * 返回一个 unsubscribe 函数用于销毁监听，防止内存泄漏
+   */
+  onStatus: (callback) => {
+    const subscription = (_event, data) => callback(data);
+    electron.ipcRenderer.on("mcproxy:status", subscription);
+    return () => {
+      electron.ipcRenderer.removeListener("mcproxy:status", subscription);
+    };
+  },
+  getTcpDelay: (host, port) => electron.ipcRenderer.invoke("network:tcp", host, port)
 });

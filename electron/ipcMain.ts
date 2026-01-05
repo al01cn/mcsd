@@ -3,10 +3,56 @@ import { NatFrp } from "./frp";
 import MinecraftDetector from "./minecraft";
 import { getMojangProfile } from "./mojang";
 import { getLatestWindowsSakuraFrp, SakuraFrpDownloader } from "./SakuraFrpDownloader";
+import SakuraFrpcManager from './frpc'
+import { getMinecraftServerStatus } from "./utils/mcStatus";
+import { proxyManager } from "./minecraft-lan-proxy";
+import net from 'net';
 const config = new Config();
 const downloader = new SakuraFrpDownloader()
+proxyManager.init();
+
 
 export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWindow) {
+    const frpc = new SakuraFrpcManager(win)
+
+    // main.ts
+    ipcMain.handle("network:tcp", async (_event, host, port) => {
+        // 1. 强制转换并检查
+        const targetPort = parseInt(String(port), 10);
+        const targetHost = String(host || '').trim();
+
+        // 2. 校验合法性
+        if (isNaN(targetPort) || targetPort <= 0 || targetPort > 65535) {
+            console.error(`无效的端口: ${port}`);
+            return -1;
+        }
+        if (!targetHost) {
+            console.error(`无效的地址: ${host}`);
+            return -1;
+        }
+
+        return new Promise((resolve) => {
+            const socket = new net.Socket();
+            const start = Date.now();
+
+            socket.setTimeout(2000);
+
+            socket.connect({ port: targetPort, host: targetHost }, () => {
+                const delay = Date.now() - start;
+                socket.destroy();
+                resolve(delay);
+            });
+
+            const handleError = () => {
+                socket.destroy();
+                resolve(-1);
+            };
+
+            socket.on('error', handleError);
+            socket.on('timeout', handleError);
+        });
+    });
+
     // 配置
     ipcMain.handle("platform:list", (): PlatformConfig[] => {
         return config.getPlatforms();
@@ -98,10 +144,22 @@ export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWind
 
     ipcMain.handle(
         'frp:natfrp.tunnelEdit',
-        async (_event, token: string, tunnel_id: number, local_port: number) => {
+        async (_event, token: string, tunnel_id: string, local_port: number) => {
             return await NatFrp.tunnelEdit(token, tunnel_id, local_port)
         }
     )
+
+    // SakuraFrp管理器
+
+    ipcMain.handle('frpc:start', (_, token: string, tunnelId: string) => {
+        frpc.startTunnel(token, tunnelId)
+        return true
+    })
+
+    ipcMain.handle('frpc:stop', (_, tunnelId: string) => {
+        frpc.stopTunnel(tunnelId)
+        return true
+    })
 
     /** 前端判断是否存在 */
     ipcMain.handle('sakurafrp:exists', () => {
@@ -130,6 +188,14 @@ export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWind
     ipcMain.handle("minecraft:detect", async () => {
         return await MinecraftDetector.detectAll();
     });
+
+    // MC 服务器状态
+    ipcMain.handle(
+        "minecraft:status",
+        async (_event, host: string, port: number, timeout?: number) => {
+            return await getMinecraftServerStatus(host, port, timeout);
+        }
+    );
 
     // 窗口控制
     ipcMain.on('window:minimize', () => {

@@ -1,5 +1,9 @@
 import { nanoid } from "nanoid";
 
+var myHeaders = new Headers();
+myHeaders.append("accept", "application/json");
+myHeaders.append("Content-Type", "application/json");
+
 type NodeInfo = {
     name: string;
     host: string;
@@ -52,14 +56,14 @@ export class NatFrp {
         return (await res.json()) as NatFrpUserInfo;
     }
 
-    static async clients(){
+    static async clients() {
         const res = await fetch(`${this.api_url}/system/clients`, {
             method: "GET",
         })
 
         return (await res.json()) as any;
     }
-    
+
     static async tunnelInfo(token: string) {
         const res = await fetch(`${this.api_url}/tunnels?token=${token}`, {
             method: "GET",
@@ -128,6 +132,7 @@ export class NatFrp {
         }
         const res = await fetch(`${this.api_url}/tunnels?token=${token}`, {
             method: "POST",
+            headers: myHeaders,
             body: JSON.stringify(raw),
         })
 
@@ -139,14 +144,15 @@ export class NatFrp {
         return data;
     }
 
-    static async tunnelEdit(token: string, tunnel_id: number, local_port: number) {
+    static async tunnelEdit(token: string, tunnel_id: string, local_port: number) {
         const raw = {
-            "id": tunnel_id,
-            local_port: local_port
+            "id": Number(tunnel_id),
+            "local_port": local_port
         }
 
-        const res = await fetch(`${this.api_url}/tunnel/edit??token=${token}`, {
+        const res = await fetch(`${this.api_url}/tunnel/edit?token=${token}`, {
             method: "POST",
+            headers: myHeaders,
             body: JSON.stringify(raw),
         })
 

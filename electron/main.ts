@@ -2,10 +2,6 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import MinecraftDetector from './minecraft'
-import { initMinecraftProxy } from './minecraft-lan-proxy'
-import { getMojangProfile } from './mojang'
-import Config, { PlatformConfig } from './config'
 import { loadIcpMain } from './ipcMain'
 
 const require = createRequire(import.meta.url)
@@ -31,7 +27,6 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 
 let win: BrowserWindow | null
 
-initMinecraftProxy(3);
 
 function createWindow() {
   win = new BrowserWindow({

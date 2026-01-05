@@ -40,4 +40,42 @@ export async function getMinecraftHead(skinUrl: string, size: number = 128): Pro
     img.onerror = () => reject("Image load failed");
   });
 }
+
+/**
+ * 获取 Minecraft 玩家皮肤 URL
+ *
+ * @param uuid - 玩家 UUID（不带连字符）
+ * @returns 玩家皮肤 URL，失败返回 null
+ *
+ * @example
+ * const url = await getMinecraftSkin("player-uuid");
+ */
+export async function getMinecraftSkin(uuid: string): Promise<string | null> {
+  try {
+    // 调用 Mojang API 获取 profile
+    const rawData = await (window as any).mojang.getProfile(uuid);
+
+    const mcProfile = rawData.data;
+
+    const texturesProperty = (mcProfile.properties as any[]).find(
+      (prop: any) => prop.name === "textures"
+    );
+
+    if (!texturesProperty) return null;
+
+    // Mojang 返回的 value 是 Base64 编码
+    const decoded = atob(texturesProperty.value);
+    const data = JSON.parse(decoded);
+
+
+    // 获取皮肤链接
+    const skinUrl = data?.textures?.SKIN?.url || null;
+
+    return skinUrl;
+  } catch (err) {
+    console.warn(`获取玩家皮肤失败: ${err}`);
+    return null;
+  }
+}
+
 export default getMinecraftHead

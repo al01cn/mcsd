@@ -1,4 +1,4 @@
-import { ipcRenderer, contextBridge } from 'electron'
+import { ipcRenderer, contextBridge, IpcRendererEvent } from 'electron'
 import { MinecraftProcessInfo } from './minecraft'
 import { PlatformConfig } from './config'
 
@@ -27,18 +27,27 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
 
 contextBridge.exposeInMainWorld('windowControl', {
   minimize: () => ipcRenderer.send('window:minimize'),
-  close: () => ipcRenderer.send('window:close'),
+  close: () => ipcRenderer.send('window:close')
 })
 
 contextBridge.exposeInMainWorld('mojang', {
-  getProfile: (uuid: string) =>
-    ipcRenderer.invoke('mojang:getProfile', uuid)
+  getProfile: (uuid: string) => ipcRenderer.invoke('mojang:getProfile', uuid)
 })
 
 contextBridge.exposeInMainWorld('minecraft', {
   getDetect() {
     return ipcRenderer.invoke("minecraft:detect");
-  }
+  },
+
+  /**
+ * 获取 Minecraft 服务器状态
+ * @param host 服务器地址
+ * @param port 服务器端口
+ * @param timeout 超时时间（可选）
+ * @returns Promise<StatusResponse>
+ */
+  getServerStatus: (host: string, port: number, timeout?: number) =>
+    ipcRenderer.invoke("minecraft:status", host, port, timeout),
 })
 
 contextBridge.exposeInMainWorld("frp", {
@@ -52,6 +61,8 @@ contextBridge.exposeInMainWorld("frp", {
     ipcRenderer.invoke("frp:natfrp.getTunnels", token),
   natfrp_tunnelCreate: (token: string, node: number, local_port: number) =>
     ipcRenderer.invoke("frp:natfrp.tunnelCreate", token, node, local_port),
+  natfrp_tunnelEdit: (token: string, tunnel_id: string, port: number) =>
+    ipcRenderer.invoke('frp:natfrp.tunnelEdit', token, tunnel_id, port),
   natfrp_userInfo: (token: string) =>
     ipcRenderer.invoke("frp:natfrp.userInfo", token),
 });
@@ -63,6 +74,15 @@ contextBridge.exposeInMainWorld('sakurafrp', {
   download: () => ipcRenderer.invoke('sakurafrp:download'),
   onProgress: (cb: (percent: number) => void) => {
     ipcRenderer.on('sakurafrp:progress', (_, percent) => cb(percent))
+  },
+  start: (token: string, tunnelId: string) =>
+    ipcRenderer.invoke('frpc:start', token, tunnelId),
+
+  stop: (tunnelId: string) =>
+    ipcRenderer.invoke('frpc:stop', tunnelId),
+
+  onLog: (callback: (log: any) => void) => {
+    ipcRenderer.on('frpc:log', (_, data) => callback(data))
   }
 })
 
@@ -91,21 +111,24 @@ contextBridge.exposeInMainWorld("platformAPI", {
 });
 
 contextBridge.exposeInMainWorld('mcproxy', {
-  // 注意现在需要传 ID
   /**
-   * 启动代理
-   * @param config ProxyConfig 对象
-   */
+       * @param config { id, remoteHost, remotePort, localPort, fakeMotd }
+       */
   start: (config: any) => ipcRenderer.send('mcproxy:start', config),
 
+  stop: (id: string) => ipcRenderer.send('mcproxy:stop', id),
+
   /**
-   * 停止指定代理
-   * @param id 实例 ID
+   * 监听状态回调
+   * 返回一个 unsubscribe 函数用于销毁监听，防止内存泄漏
    */
-  stop: (id: any) => ipcRenderer.send('mcproxy:stop', id),
-  /**
- * 监听启动状态回调
- * @param callback (event, {id, success}) => void
- */
-  onStatus: (callback: (event: Electron.IpcRendererEvent, ...args: any[]) => void) => ipcRenderer.on('mcproxy:status', callback)
+  onStatus: (callback: (data: any) => void) => {
+    const subscription = (_event: IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('mcproxy:status', subscription);
+
+    return () => {
+      ipcRenderer.removeListener('mcproxy:status', subscription);
+    };
+  },
+  getTcpDelay: (host: string, port: number) => ipcRenderer.invoke('network:tcp', host, port)
 });

@@ -1,3 +1,5 @@
+import { nanoid } from "nanoid";
+
 /**
  * 将接口返回数值换算成 GB 并四舍五入
  * @param value 原始接口数值
@@ -21,3 +23,23 @@ export function gibToGB(gib: number, decimals: number = 1): string {
     const rounded = Number(gb.toFixed(decimals));
     return `${rounded} GB`;
 }
+
+export function MCProxyName() {
+    return "mc_" + nanoid(6)
+}
+
+export const extractHostAndPort = (text: string) => {
+    // 正则解析：
+    // >>             : 匹配起始符
+    // ([^<>]+:\d+)   : 捕获组 1：匹配不含<>的字符，中间必须有冒号，后面必须跟数字端口
+    // <<             : 匹配结束符
+    const regex = />>([^<>]+:\d+)<</;
+
+    const match = text.match(regex);
+    if (match) {
+        const fullContent = match[1]; // 得到 "frp-ski.com:39345"
+        const [host, port] = fullContent.split(':');
+        return { host, port };
+    }
+    return null;
+};

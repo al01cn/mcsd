@@ -1,39 +1,21 @@
 <script lang="ts" setup>
-import { ref, onMounted, nextTick } from 'vue';
-import { RotateCw, Loader2, PlusCircle } from "lucide-vue-next";
-import MinecraftFriendRoomCard from '../components/MinecraftFriendRoomCard.vue';
+import { ref } from 'vue';
+import { PlusCircle } from "lucide-vue-next";
+import SessionCache from '../lib/cache';
+import { useRouter } from 'vue-router';
 
-const loadingPid = ref<number | null>(null);
-const rooms = ref<any[]>([]);
-const isRefreshing = ref(false);
+const router = useRouter();
+const McClientToken = ref()
 
-// 模拟房间数据
-const rawData = [
-    { pid: 1, hostName: "Summer_Miku", version: "1.20.1", ping: "24", players: "3/10", isPublic: false },
-    { pid: 2, hostName: "Technical_Server", version: "1.20.1", ping: "56", players: "12/50", isPublic: true },
-];
+const confirmJoinNetwork = async() => {
 
-const refreshRooms = async () => {
-    if (isRefreshing.value) return;
-    isRefreshing.value = true;
-    rooms.value = []; // 触发消失动画
+    SessionCache.set("runing_token", McClientToken.value)
 
-    setTimeout(() => {
-        isRefreshing.value = false;
-        nextTick(() => {
-            rooms.value = [...rawData]; // 触发进入动画
-        });
-    }, 1000);
-};
+    // console.log(rawData);
 
-onMounted(() => { refreshRooms(); });
+    router.push('/console')
+}
 
-const handleJoinRoom = (room: any) => {
-    if (loadingPid.value === null) {
-        loadingPid.value = room.pid;
-        setTimeout(() => { loadingPid.value = null; }, 3000);
-    }
-};
 </script>
 
 <template>
@@ -41,34 +23,20 @@ const handleJoinRoom = (room: any) => {
         <div class="flex items-center justify-between">
             <div>
                 <h2 class="text-2xl font-black text-slate-800 tracking-tight">加入房间</h2>
-                <p class="text-slate-400 font-bold text-xs uppercase tracking-wider">寻找好友或公开的联机房间</p>
+                <p class="text-slate-400 font-bold text-xs uppercase tracking-wider">输入联机码，与朋友进行联机游玩</p>
             </div>
+        </div>
 
-            <div class="flex items-center gap-3">
-                <button @click="refreshRooms" :disabled="isRefreshing"
-                    class="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl transition-all duration-300 active:scale-95 group disabled:opacity-50">
-                    <RotateCw
-                        :class="['w-4 h-4 transition-transform duration-500', isRefreshing ? 'animate-spin' : 'group-hover:rotate-180']" />
-                    <span class="text-sm font-bold">刷新列表</span>
-                </button>
-                <button
-                    class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-[#5e88a4] text-white rounded-2xl transition-all duration-300 active:scale-95 group disabled:opacity-50">
+        <div class="px-6 flex justify-center items-center h-100">
+            <div class="w-full flex gap-2">
+                <input type="password" placeholder="请输入联机码" v-model="McClientToken"
+                    class="input w-full bg-slate-50 border rounded-2xl px-5 py-3.5 text-sm font-bold text-slate-700 focus:bg-white border-primary outline-none">
+                <button @click="confirmJoinNetwork()"
+                    class="flex w-50 items-center gap-2 px-4 py-2 bg-primary hover:bg-[#5e88a4] text-white rounded-2xl transition-all duration-300 active:scale-95 group">
                     <PlusCircle class="w-4 h-4" />
                     <span class="text-sm font-bold">加入房间</span>
                 </button>
             </div>
-        </div>
-
-        <div class="relative min-h-100">
-            <div v-if="isRefreshing" class="absolute inset-0 flex flex-col items-center justify-center">
-                <Loader2 class="w-10 h-10 text-[#4DB7FF] animate-spin mb-4" />
-                <p class="text-slate-400 font-bold text-sm animate-pulse">正在查找房间...</p>
-            </div>
-
-            <TransitionGroup name="stagger" tag="div" class="grid grid-cols-1 gap-4">
-                <MinecraftFriendRoomCard v-for="(i, index) in rooms" :key="i.pid" :index="index" v-bind="i"
-                    :loading="loadingPid === i.pid" @click.stop="handleJoinRoom(i)" />
-            </TransitionGroup>
         </div>
     </div>
 </template>

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { NatFrpUserInfo, Platform, PlatformConfig } from '../lib/config';
-import { ArrowRight, PlusCircle, Server, Key, Box, Trash, RotateCw } from 'lucide-vue-next';
+import { ArrowRight, PlusCircle, Server, Key, Box, Trash, RotateCw, Loader2, BadgeCheck } from 'lucide-vue-next';
 import { nanoid } from 'nanoid';
 import { onMounted, ref } from 'vue';
 import { toast } from 'vue-sonner';
@@ -12,6 +12,8 @@ interface PlatformConfigWithUser extends PlatformConfig {
 const isModalOpen = ref(false)
 const network = ref<Platform>("sakurafrp")
 const networkKey = ref("")
+const tunnels = ref<any[]>([])
+const tipsText = ref("")
 
 const platforms = ref<PlatformConfigWithUser[]>([])
 
@@ -112,6 +114,24 @@ const togglePlatform = async (nanoid: string, sw: boolean) => {
     }
 }
 
+const getTunnelInfo = async (token: string) => {
+    try {
+        const tunnelInfo = await (window as any).frp.natfrp_tunnelInfo(token)
+        tunnels.value = tunnelInfo
+    } catch (e) {
+        console.log(e)
+    }
+}
+
+const createTunnel = async (token: string, tunnelId: number) => {
+    try {
+        const tunnelInfo = await (window as any).frp.natfrp_tunnelCreate(token, tunnelId, 25565)
+        return tunnelInfo
+    } catch (e) {
+        console.log(e)
+    }
+}
+
 onMounted(async () => {
     await getPlatforms()
     await fetchUserInfoForPlatforms()
@@ -161,7 +181,8 @@ onMounted(async () => {
                         <div class="flex items-center gap-4">
                             <div class="flex flex-col">
                                 <h4 class="font-black text-slate-800 text-base leading-tight gap-4">
-                                    <span>{{ i.userInfo?.name ? i.userInfo?.name : i.platform.toLocaleUpperCase() }}</span>
+                                    <span>{{ i.userInfo?.name ? i.userInfo?.name : i.platform.toLocaleUpperCase()
+                                        }}</span>
                                 </h4>
                                 <p class="text-[10px] text-slate-400 font-bold flex items-center gap-1.5 mt-1 uppercase
                                     tracking-tight">
@@ -195,12 +216,14 @@ onMounted(async () => {
                             </div>
                             <div v-if="i.userInfo?.sign.traffic" class="flex flex-col">
                                 <span class="text-[9px] text-slate-400 font-black uppercase tracking-widest">可用流量</span>
-                                <span class="text-sm font-black text-slate-700">{{ i.userInfo?.sign.traffic + ' MB'
+                                <span class="text-sm font-black text-slate-700">{{ (Math.round((i.userInfo?.sign.traffic
+                                    / 8) * 10) / 10 - 0.1).toFixed(1) + ' GiB'
                                 }}</span>
                             </div>
                         </div>
-                        <div class="flex items-center gap-1.5 text-primary font-black text-xs">
+                        <div class="flex items-center gap-1.5 text-primary font-black text-sm">
                             {{ i.platform.toLocaleUpperCase() }}
+                            <BadgeCheck class="w-4 h-4" />
                         </div>
                     </div>
                 </div>

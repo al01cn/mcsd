@@ -7,6 +7,7 @@ import { Settings } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { getMinecraftHead } from '../lib/mcHead'
 import { useCountdown } from '../lib/useCountdown';
+import SessionCache from '../lib/cache';
 
 const route = useRoute();
 const router = useRouter();
@@ -23,10 +24,6 @@ const pages = ref([
     {
         name: '控制台',
         path: '/console'
-    },
-    {
-        name: '节点管理',
-        path: '/network'
     }
 ])
 
@@ -38,7 +35,7 @@ const headImg = ref("")
 const isOpen = ref(false);
 const isModalOpen = ref(false);
 
-const isRuning = ref(false)
+const isRuning = SessionCache.get<boolean>('isRuning', false)
 
 const { start } = useCountdown(timeSakuraFrp, 5, {
     async onFinish() {
@@ -62,16 +59,16 @@ const isActive = (path: string) => {
     return pages.value.some(p => p.path === route.path && p.path === path)
 }
 
-function toggleUserDropdown(event: Event) {
-    event.stopPropagation();
-    isOpen.value = !isOpen.value;
-}
+// function toggleUserDropdown(event: Event) {
+//     event.stopPropagation();
+//     isOpen.value = !isOpen.value;
+// }
 
-function handleUserAction(action: string) {
-    toast('My first toast')
-    console.log(action);
+// function handleUserAction(action: string) {
+//     toast('My first toast')
+//     console.log(action);
 
-}
+// }
 
 // 打开退出弹窗（示例）
 function openLogoutModal() {
@@ -86,7 +83,7 @@ const closeLogoutModal = () => {
 
 const confirmLogout = () => {
     console.log("Logout");
-
+    (window as any).windowControl.close()
     closeLogoutModal()
 }
 
@@ -120,7 +117,11 @@ const toPage = (e: Event, path: string) => {
     }
 
     if (isRuning.value) {
-        toast.error('隧道正在运行，请先停止');
+        if (path != '/console') {
+            toast.error('隧道正在运行，请先停止');
+            router.push('/console');
+        }
+        return
     }
 
     // 2. 你的业务逻辑拦截
@@ -141,6 +142,19 @@ function handleClickOutside(event: MouseEvent) {
     }
 }
 
+const getNav = (path: string) => {
+    const isConsole = path === '/console';
+
+    // 逻辑：(运行中且是控制台) OR (未运行且不是控制台) -> 启用
+    const isEnabled = isRuning.value ? isConsole : !isConsole;
+
+    if (isEnabled) {
+        return 'text-slate-400 hover:text-slate-600 cursor-pointer';
+    } else {
+        return 'cursor-not-allowed pointer-events-none text-slate-300';
+    }
+};
+
 // 生命周期挂载和卸载事件监听
 onMounted(async () => {
     document.addEventListener('click', handleClickOutside);
@@ -160,11 +174,16 @@ onMounted(async () => {
         })
     }
 });
+
 onBeforeUnmount(() => {
     document.removeEventListener('click', handleClickOutside);
 });
 
 const close = () => {
+    if(isRuning.value){
+        openLogoutModal();
+        return
+    }
     (window as any).windowControl.close();
 };
 
@@ -186,13 +205,13 @@ const minimize = () => {
 
         <nav class="flex items-center gap-4 h-full">
             <a v-for="page in pages" :key="page.name" @click.prevent="toPage($event, page.path)"
-                :class="`nav-tab font-bold text-[13px] text-slate-400 hover:text-slate-600 h-full px-4 ${isActive(page.path) ? 'active' : ''}`">
+                :class="`nav-tab font-bold text-[13px] h-full px-4 ${isActive(page.path) ? 'active' : ''} ${getNav(page.path)}`">
                 {{ page.name }}
             </a>
         </nav>
 
         <div class="flex items-center gap-1">
-            <div class="relative">
+            <!-- <div class="relative">
                 <button @click="toggleUserDropdown"
                     class="flex items-center gap-2 p-1 pr-3 bg-white border-slate-100 rounded-xl transition-all">
                     <img :src="headImg" alt="head-avatar" class="w-8 h-8 rounded-lg bg-slate-100">
@@ -215,7 +234,7 @@ const minimize = () => {
                         <LogOut class="w-4 h-4" /> 退出登录
                     </button>
                 </div>
-            </div>
+            </div> -->
 
             <div class="flex items-center w-40 justify-end h-full gap-1">
                 <button @click="minimize()"
@@ -223,7 +242,7 @@ const minimize = () => {
                     <Minus class="w-4 h-4" />
                 </button>
                 <button @click="close()"
-                    class="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-red-500 hover:text-white transition-colors">
+                    :class="`h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-red-500 hover:text-white transition-colors`">
                     <X class="w-4 h-4" />
                 </button>
             </div>
@@ -237,7 +256,7 @@ const minimize = () => {
         </div>
 
         <!-- Side Setting Ball -->
-        <RouterLink v-if="showSettingsButton" to="/settings"
+        <RouterLink v-if="showSettingsButton && !isRuning" to="/settings"
             class="fab left-6 bg-white text-slate-400 border border-slate-100 hover:text-primary transition-colors group">
             <Settings class="w-5 h-5 group-hover:rotate-90 transition-transform duration-700" />
         </RouterLink>

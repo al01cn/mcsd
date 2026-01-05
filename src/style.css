@@ -23,10 +23,6 @@ button:disabled {
   cursor: not-allowed;
 }
 
-a:hover {
-  cursor: pointer;
-}
-
 a:disabled {
   cursor: not-allowed;
 }

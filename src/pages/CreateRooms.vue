@@ -1,15 +1,20 @@
 <script lang="ts" setup>
-import { ref, onMounted, nextTick, computed, watch } from 'vue';
-import { RotateCw, Loader2, Box, ArrowRight, BadgeCheck } from "lucide-vue-next";
+import { ref, onMounted, nextTick, computed } from 'vue';
+import { RotateCw, Loader2, Box, ArrowRight, BadgeCheck, Pickaxe, Workflow } from "lucide-vue-next";
 import MinecraftClientCard from '../components/MinecraftClientCard.vue';
 import getDetect, { MinecraftProcessInfo } from '../lib/mcDetect';
 import { SakuraFrpNode } from '../lib/config';
+import { toast } from 'vue-sonner'
+import { useRouter } from 'vue-router';
+import SessionCache from '../lib/cache';
+
+const router = useRouter()
 
 const loadingPid = ref<number | null>(null);
 const clients = ref<MinecraftProcessInfo[]>([]);
 const isRefreshing = ref(false);
 const isModalOpen = ref(false)
-const network = ref("natfrp")
+const network = ref("")
 
 const platforms = ref([])
 
@@ -28,23 +33,57 @@ const mcNodes = computed(() =>
     })
 )
 
-const openModal = async (pid: number, username: string, uuid: string, port: number) => {
+const mcPid = ref(0)
+const mcPort = ref(25565)
+const mcUuid = ref('')
+
+const openModal = async (pid: number, port: number, uuid: string) => {
     isModalOpen.value = !isModalOpen.value
     await getPlatforms()
     await getTunnelInfo(network.value)
     await getMergedNodes(network.value)
+    mcPid.value = pid
+    mcPort.value = port
+    mcUuid.value = uuid
 }
 
 const closeNetworkModal = () => {
     isModalOpen.value = !isModalOpen.value
-    setTimeout(() => { 
+    setTimeout(() => {
         loadingPid.value = null;
         isNode.value = 0
-     }, 1000);
+    }, 1000);
 }
 
-const confirmNetwork = () => {
-    console.log("Network");
+const confirmNetwork = async() => {
+    if (!network.value) {
+        toast.error("内网穿透平台选择为空")
+        return
+    }
+
+    if(!isNode.value){
+        toast.error("请选择内网穿透节点")
+        return
+    }
+
+    const rawData = {
+        pid: mcPid.value,
+        uuid: mcUuid.value,
+        port: mcPort.value,
+        tunnel_token: network.value,
+        tunnel_id: isTunnel.value,
+        node_id: isNode.value
+    }
+
+    await editTunnel(network.value, isTunnel.value)
+
+    const token = btoa(JSON.stringify(rawData))
+
+    SessionCache.set("runing_token", token)
+
+    // console.log(rawData);
+
+    router.push('/console')
 
     closeNetworkModal()
 }
@@ -57,41 +96,18 @@ const refreshClients = async () => {
 
     // 模拟接口耗时
     setTimeout(async () => {
-        // const data = await getDetect();
+        const data = await getDetect();
         isRefreshing.value = false;
         // nextTick 确保 Loading 消失后再开始填充数据，防止动画卡顿
-        nextTick(() => {
-            clients.value = [
-                {
-                    pid: 0,
-                    java: "Java",
-                    version: "1.20.1",
-                    loader: "Vanilla",
-                    loaderVersion: "1.20.1",
-                    username: "OneTunnel",
-                    uuid: "00000000-0000-0000-0000-000000000000",
-                    loginType: "offline",
-                    lanPorts: [25565]
-                },
-                {
-                    pid: 2,
-                    java: "Java",
-                    version: "1.20.1",
-                    loader: "Forge",
-                    loaderVersion: undefined,
-                    username: "OneTunnel",
-                    uuid: "00000000-0000-0000-0000-000000000000",
-                    loginType: "offline",
-                    lanPorts: []
-                }
-            ]
+        nextTick(async () => {
+            clients.value = data
         });
     }, 1000);
 };
 
 const getPlatformBySecret = (secret: string): string => {
-  const item = platforms.value.find(i => (i as any).secret === secret) as any
-  return item?.platform
+    const item = platforms.value.find(i => (i as any).secret === secret) as any
+    return item?.platform
 }
 
 const getMergedNodes = async (token: string) => {
@@ -117,29 +133,12 @@ const getTunnelInfo = async (token: string) => {
     }
 }
 
-const createTunnel = async (token: string, tunnelId: number) => {
+const editTunnel = async (token: string, tunnelId: string) => {
     try {
-        const tunnelInfo = await (window as any).frp.natfrp_tunnelCreate(token, tunnelId, 25565)
-        console.log(tunnelInfo)
-        return tunnelInfo
-    } catch (e) {
-        console.log(e)
-    }
-}
+        const tunPort = mcPort.value
+        console.log(token, tunnelId, tunPort);
 
-const delTunnel = async (token: string, tunnelId: number) => {
-    try {
-        const tunnelInfo = await (window as any).frp.natfrp_tunnelDelete(token, tunnelId)
-        console.log(tunnelInfo)
-        return tunnelInfo
-    } catch (e) {
-        console.log(e)
-    }
-}
-
-const editTunnel = async (token: string, tunnelId: number) => {
-    try {
-        const tunnelInfo = await (window as any).frp.natfrp_tunnelEdit(token, tunnelId, 25565)
+        const tunnelInfo = await (window as any).frp.natfrp_tunnelEdit(token, tunnelId, tunPort)
         console.log(tunnelInfo)
         return tunnelInfo
     } catch (e) {
@@ -151,7 +150,10 @@ const getPlatforms = async () => {
     try {
         const platformsList = await (window as any).platformAPI.list()
         platforms.value = platformsList
-        network.value = (platformsList[0] as any).secret
+        const available = platformsList.find(
+            (item: any) => item.enabled === true
+        )
+        network.value = available ? available.secret : ''
     } catch (e) {
         console.log(e)
     }
@@ -168,7 +170,7 @@ onMounted(async () => {
 const handleCardClick = (client: any) => {
     if (client.lanPorts.length === 0 || loadingPid.value !== null) return;
     loadingPid.value = client.pid;
-    openModal(client.pid, client.username, client.uuid, client.lanPorts[0])
+    openModal(client.pid, client.lanPorts[0], client.uuid)
 };
 </script>
 
@@ -213,22 +215,25 @@ const handleCardClick = (client: any) => {
                     <div class="flex gap-2 w-full">
                         <div class="space-y-1.5">
                             <label class="text-[11px] font-black text-slate-400 uppercase ml-2 flex items-center gap-2">
-                                <Box class="w-3.5 h-3.5"></Box> 内网穿透平台（{{ getPlatformBySecret(network)}}）
+                                <Box class="w-3.5 h-3.5"></Box> 内网穿透平台（{{ getPlatformBySecret(network) }}）
                             </label>
                             <select v-model="network"
                                 class="w-64 select bg-slate-50 border border-slate-100 rounded-2xl px-5 text-sm font-bold text-slate-700 focus:bg-white focus:border-primary focus:outline-none cursor-pointer">
-                                <option v-for="p in platforms" :value="(p as any).secret">{{ ((p as any).platform as
-                                    string).toLocaleUpperCase() + `(${((p as any).secret as string)})` }}
+                                <option :value="null" disabled>没有获取到账号的话，请到设置里添加一个</option>
+                                <option v-for="p in platforms" :value="(p as any).secret"
+                                    :disabled="!(p as any).enabled">{{ ((p as any).platform as
+                                        string).toLocaleUpperCase() + `(${((p as any).secret as string)})` }}
                                 </option>
                             </select>
                         </div>
 
                         <div class="space-y-1.5">
                             <label class="text-[11px] font-black text-slate-400 uppercase ml-2 flex items-center gap-2">
-                                <Box class="w-3.5 h-3.5"></Box> 隧道
+                                <Workflow class="w-3.5 h-3.5"></Workflow> 隧道
                             </label>
                             <select v-model="isTunnel"
                                 class="w-64 select bg-slate-50 border border-slate-100 rounded-2xl px-5 text-sm font-bold text-slate-700 focus:bg-white focus:border-primary focus:outline-none cursor-pointer">
+                                <option :value="null" disabled>没有获取到隧道的话，将自动创建</option>
                                 <option v-for="p in tunnels" :value="(p as any).id">{{ ((p as any).name) + `(${((p as
                                     any).id as
                                     string)})` }}
@@ -237,7 +242,7 @@ const handleCardClick = (client: any) => {
                         </div>
                         <div class="space-y-2.5">
                             <label class="text-[11px] font-black text-slate-400 uppercase ml-2 flex items-center gap-2">
-                                <Box class="w-3.5 h-3.5"></Box> MC筛选
+                                <Pickaxe class="w-3.5 h-3.5"></Pickaxe> MC筛选
                             </label>
                             <input type="checkbox" v-model="mcOnly" class="toggle bg-primary ml-1" />
                         </div>
@@ -245,8 +250,11 @@ const handleCardClick = (client: any) => {
                 </div>
 
                 <div class="p-8 pt-4 space-y-5">
-                    <div :class="`grid grid-cols-1 md:grid-cols-2 gap-5 max-h-100 ${mcNodes.length >= 4 ? 'overflow-y-auto' : ''}`">
-
+                    <div class="ml-2">
+                        <label class="label text-sm">请选择内网穿透节点，如果你不知道怎么选，就选地区离你最近的</label>
+                    </div>
+                    <div
+                        :class="`grid grid-cols-1 md:grid-cols-2 gap-5 max-h-100 ${mcNodes.length >= 4 ? 'overflow-y-auto' : ''}`">
                         <!-- 节点卡片 1 -->
                         <div v-for="node in mcNodes" :key="node.id" @click="toNode(node.id)"
                             class="bg-white p-6 rounded-[2.2rem] border border-slate-100 shadow-soft hover:shadow-float hover:border-primary/20 transition-all group cursor-pointer relative overflow-hidden">
