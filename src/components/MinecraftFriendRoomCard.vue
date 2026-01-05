@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { Activity, AlertCircle, Loader2 } from "lucide-vue-next"
+import { Activity, Loader2 } from "lucide-vue-next"
 import { Icon } from "@iconify/vue";
 
 defineProps({

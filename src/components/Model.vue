@@ -38,7 +38,7 @@ const handleOverlayClick = () => {
 <template>
     <Teleport to="body">
         <div v-if="open"
-            :class="`${open ? 'opacity-100' : 'opacity-0 pointer-events-none'} fixed inset-0 z-[200] flex items-center justify-center px-4 transition-all duration-300`">
+            :class="`${open ? 'opacity-100' : 'opacity-0 pointer-events-none'} fixed inset-0 z-200 flex items-center justify-center px-4 transition-all duration-300`">
             <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-md" @click="handleOverlayClick"></div>
 
             <div @click.stop

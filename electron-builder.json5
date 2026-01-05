@@ -5,7 +5,7 @@
   "asar": true,
   "productName": "OneTunnel",
   "directories": {
-    "output": "release/${version}"
+    "output": "debug/${version}"
   },
   "files": [
     "dist",

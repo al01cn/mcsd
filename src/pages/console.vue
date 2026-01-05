@@ -229,7 +229,7 @@ const ReconnectServer = () => {
         isReconnecting.value = false;
 
         // 清理并退出
-        closeServer(true);
+        closeServer();
         return;
     }
 
@@ -286,7 +286,7 @@ const stopServer = () => {
     }
 }
 
-const closeServer = (isFailed = false) => {
+const closeServer = () => {
     isDestoryed.value = true;
 
     stopServer();

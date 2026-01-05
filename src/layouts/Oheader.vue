@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { useRoute, useRouter } from 'vue-router'
-import { CloudLightning, Minus, X, LogOut, BadgeAlert } from 'lucide-vue-next';
+import { Minus, X, BadgeAlert } from 'lucide-vue-next';
 import { toast } from 'vue-sonner'
 import config from '../lib/config'
 import { Settings } from 'lucide-vue-next';
