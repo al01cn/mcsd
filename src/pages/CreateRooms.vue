@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import { ref, onMounted, nextTick, computed } from 'vue';
-import { RotateCw, Loader2, Box, ArrowRight, BadgeCheck, Pickaxe, Workflow } from "lucide-vue-next";
+import { ref, onMounted, computed, onUnmounted, watch } from 'vue';
+import { RotateCw, Loader2, Box, ArrowRight, BadgeCheck, Pickaxe, Workflow, Radius, CircleX } from "lucide-vue-next";
 import MinecraftClientCard from '../components/MinecraftClientCard.vue';
 import getDetect, { MinecraftProcessInfo } from '../lib/mcDetect';
 import { SakuraFrpNode } from '../lib/config';
@@ -18,12 +18,15 @@ const network = ref("")
 
 const platforms = ref([])
 
+const isCreateTunnels = ref(false)
+const createTunnelType = ref<1 | 2 | 3>(1)
+const createTunnelMessage = ref("")
 const tunnels = ref([])
 const isTunnel = ref("")
 const userVipLevel = ref(0)
 
 const nodes = ref<SakuraFrpNode[]>([])
-const isNode = ref(0)
+const isNode = ref(203)
 const mcOnly = ref(true)
 const mcNodes = computed(() =>
     nodes.value.filter(node => {
@@ -36,6 +39,9 @@ const mcNodes = computed(() =>
 const mcPid = ref(0)
 const mcPort = ref(25565)
 const mcUuid = ref('')
+
+// 用于存储定时器引用
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 const openModal = async (pid: number, port: number, uuid: string) => {
     isModalOpen.value = !isModalOpen.value
@@ -55,17 +61,27 @@ const closeNetworkModal = () => {
     }, 1000);
 }
 
-const confirmNetwork = async() => {
+const confirmNetwork = async () => {
     if (!network.value) {
         toast.error("内网穿透平台选择为空")
         return
     }
 
-    if(!isNode.value){
+    if (!isNode.value) {
         toast.error("请选择内网穿透节点")
         return
     }
 
+    if (!isTunnel.value) {
+        isCreateTunnels.value = true
+        await createTunnel(network.value, isNode.value)
+        return
+    }
+
+    startServer()
+}
+
+const startServer = async () => {
     const rawData = {
         pid: mcPid.value,
         uuid: mcUuid.value,
@@ -74,35 +90,71 @@ const confirmNetwork = async() => {
         tunnel_id: isTunnel.value,
         node_id: isNode.value
     }
-
-    await editTunnel(network.value, isTunnel.value)
+    if (!isCreateTunnels.value) {
+        await editTunnel(network.value, isTunnel.value)
+    }
 
     const token = btoa(JSON.stringify(rawData))
 
     SessionCache.set("runing_token", token)
-
-    // console.log(rawData);
 
     router.push('/console')
 
     closeNetworkModal()
 }
 
-const refreshClients = async () => {
+const refreshClients = async (showLoading = false) => {
     if (isRefreshing.value) return;
+    if (showLoading) isRefreshing.value = true;
 
-    isRefreshing.value = true;
-    clients.value = []; // 先清空列表，触发“离场”动画
+    try {
+        const newData = await getDetect();
+        const newPids = new Set(newData.map(c => c.pid));
 
-    // 模拟接口耗时
-    setTimeout(async () => {
-        const data = await getDetect();
-        isRefreshing.value = false;
-        // nextTick 确保 Loading 消失后再开始填充数据，防止动画卡顿
-        nextTick(async () => {
-            clients.value = data
+        // 1. 删除已不存在的
+        for (let i = clients.value.length - 1; i >= 0; i--) {
+            if (!newPids.has(clients.value[i].pid)) {
+                clients.value.splice(i, 1);
+            }
+        }
+
+        // 2. 更新或新增
+        newData.forEach((newItem) => {
+            const existingItem = clients.value.find(c => c.pid === newItem.pid);
+            if (existingItem) {
+                // 原地更新属性，不触发重新渲染
+                Object.assign(existingItem, newItem);
+            } else {
+                clients.value.push(newItem);
+            }
         });
-    }, 1000);
+
+        // 3. 【关键：显式排序】按 PID 从小到大排序
+        // 只要排序规则固定，卡片就不会来回跳动
+        clients.value.sort((a, b) => a.pid - b.pid);
+
+    } catch (e) {
+        console.error("检测失败:", e);
+    } finally {
+        isRefreshing.value = false;
+    }
+};
+
+// 开启轮询
+const startPolling = () => {
+    if (pollTimer) return;
+    pollTimer = setInterval(() => {
+        // 自动轮询不触发全局 loading 状态
+        refreshClients(false);
+    }, 2000); // 每3秒检测一次
+};
+
+// 停止轮询
+const stopPolling = () => {
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
 };
 
 const getPlatformBySecret = (secret: string): string => {
@@ -125,8 +177,10 @@ const getTunnelInfo = async (token: string) => {
     try {
         const tunnelInfo = await (window as any).frp.natfrp_tunnelInfo(token)
         tunnels.value = tunnelInfo
-        isTunnel.value = tunnelInfo[0].id
-        console.log(tunnelInfo);
+        if(tunnelInfo.length > 0 ){
+            isTunnel.value = tunnelInfo[0].id
+        }
+        // console.log(tunnelInfo);
 
     } catch (e) {
         console.log(e)
@@ -136,10 +190,33 @@ const getTunnelInfo = async (token: string) => {
 const editTunnel = async (token: string, tunnelId: string) => {
     try {
         const tunPort = mcPort.value
-        console.log(token, tunnelId, tunPort);
-
         const tunnelInfo = await (window as any).frp.natfrp_tunnelEdit(token, tunnelId, tunPort)
         console.log(tunnelInfo)
+        return tunnelInfo
+    } catch (e) {
+        console.log(e)
+    }
+}
+
+const createTunnel = async (token: string, nodeId: number) => {
+    try {
+        const tunPort = mcPort.value
+        const tunnelInfo = await (window as any).frp.natfrp_tunnelCreate(token, nodeId, tunPort)
+        console.log(tunnelInfo);
+        
+        if (tunnelInfo.code) {
+            createTunnelMessage.value = tunnelInfo.msg
+            createTunnelType.value = 3
+
+            setTimeout(()=>{
+                isCreateTunnels.value = false
+                createTunnelType.value = 1
+            }, 3000)
+        } else {
+            createTunnelType.value = 2
+            isCreateTunnels.value = false
+            startServer()
+        }
         return tunnelInfo
     } catch (e) {
         console.log(e)
@@ -163,8 +240,26 @@ const toNode = (id: number) => {
     isNode.value = id
 }
 
+// 监听平台切换
+watch(network, async (newSecret) => {
+    if (newSecret) {
+        // 重置当前选择的隧道和节点，防止跨平台数据冲突
+        isTunnel.value = "";
+        
+        // 重新获取该平台下的数据
+        await getTunnelInfo(newSecret);
+    } else {
+        tunnels.value = [];
+    }
+});
+
 onMounted(async () => {
-    refreshClients();
+    await refreshClients(true); // 首次加载显示 loading
+    startPolling();
+});
+
+onUnmounted(() => {
+    stopPolling();
 });
 
 const handleCardClick = (client: any) => {
@@ -179,9 +274,9 @@ const handleCardClick = (client: any) => {
         <div class="flex items-center justify-between">
             <div>
                 <h2 class="text-2xl font-black text-slate-800 tracking-tight">创建房间</h2>
-                <p class="text-slate-400 font-bold text-xs uppercase tracking-wider">创建一个联机房间</p>
+                <p class="text-slate-400 font-bold text-xs uppercase tracking-wider">创建一个联机房间，与好友一起游玩</p>
             </div>
-            <button @click="refreshClients" :disabled="isRefreshing"
+            <button @click="refreshClients(true)" :disabled="isRefreshing"
                 class="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl transition-all duration-300 active:scale-95 group disabled:opacity-50">
                 <RotateCw
                     :class="['w-4 h-4 transition-transform duration-500', isRefreshing ? 'animate-spin' : 'group-hover:rotate-180']" />
@@ -190,15 +285,21 @@ const handleCardClick = (client: any) => {
         </div>
 
         <div class="relative min-h-100">
-            <div v-if="isRefreshing" class="absolute inset-0 flex flex-col items-center justify-center">
-                <Loader2 class="w-10 h-10 text-[#4DB7FF] animate-spin mb-4" />
-                <p class="text-slate-400 font-bold text-sm animate-pulse">正在查找游戏...</p>
-            </div>
+            <Transition name="fade-slide" mode="out-in">
+                <div v-if="isRefreshing || clients.length <= 0" key="loading"
+                    class="absolute inset-0 flex flex-col items-center justify-center">
+                    <Loader2 class="w-10 h-10 text-[#4DB7FF] animate-spin mb-4" />
+                    <p class="text-slate-400 font-bold text-sm animate-pulse">正在查找游戏...</p>
+                </div>
 
-            <TransitionGroup name="stagger" tag="div" class="grid grid-cols-1 gap-4">
-                <MinecraftClientCard v-for="(i, index) in clients" :key="i.pid" :index="index" v-bind="i"
-                    :isLan="i.lanPorts.length > 0" :loading="loadingPid === i.pid" @click.stop="handleCardClick(i)" />
-            </TransitionGroup>
+                <div v-else key="list" class="w-full">
+                    <TransitionGroup name="stagger" tag="div" class="grid grid-cols-1 gap-4">
+                        <MinecraftClientCard v-for="(i, index) in clients" :key="i.pid" :index="index" v-bind="i"
+                            :provider="i.provider" :isLan="i.isLan" :loading="loadingPid === i.pid"
+                            @click.stop="handleCardClick(i)" />
+                    </TransitionGroup>
+                </div>
+            </Transition>
         </div>
 
         <!-- 3. Network Modal -->
@@ -212,7 +313,7 @@ const handleCardClick = (client: any) => {
                     <div class="flex w-full items-center gap-2">
                         <h3 class="text-xl font-black text-slate-800 mb-2">创建联机房间</h3>
                     </div>
-                    <div class="flex gap-2 w-full">
+                    <div v-if="!isCreateTunnels" class="flex gap-2 w-full">
                         <div class="space-y-1.5">
                             <label class="text-[11px] font-black text-slate-400 uppercase ml-2 flex items-center gap-2">
                                 <Box class="w-3.5 h-3.5"></Box> 内网穿透平台（{{ getPlatformBySecret(network) }}）
@@ -234,9 +335,9 @@ const handleCardClick = (client: any) => {
                             <select v-model="isTunnel"
                                 class="w-64 select bg-slate-50 border border-slate-100 rounded-2xl px-5 text-sm font-bold text-slate-700 focus:bg-white focus:border-primary focus:outline-none cursor-pointer">
                                 <option :value="null" disabled>没有获取到隧道的话，将自动创建</option>
-                                <option v-for="p in tunnels" :value="(p as any).id">{{ ((p as any).name) + `(${((p as
+                                <option v-for="p in tunnels" :value="(p as any).id" :disabled="(p as any).online">{{ ((p as any).name) + `(${((p as
                                     any).id as
-                                    string)})` }}
+                                    string)})-${(p as any).online ? '在线':'空闲'}` }}
                                 </option>
                             </select>
                         </div>
@@ -249,7 +350,7 @@ const handleCardClick = (client: any) => {
                     </div>
                 </div>
 
-                <div class="p-8 pt-4 space-y-5">
+                <div v-if="!isCreateTunnels" class="p-8 pt-4 space-y-5">
                     <div class="ml-2">
                         <label class="label text-sm">请选择内网穿透节点，如果你不知道怎么选，就选地区离你最近的</label>
                     </div>
@@ -298,7 +399,23 @@ const handleCardClick = (client: any) => {
                     </div>
                 </div>
 
-                <div class="flex gap-2.5 p-5 pt-0">
+                <div v-else class="p-8 pt-4 space-y-5">
+                    <div class="px-6 flex flex-col justify-center items-center h-80">
+                        <Radius v-if="createTunnelType == 1" class="w-16 h-auto text-[#4DB7FF] animate-spin mb-4" />
+                        <BadgeCheck v-if="createTunnelType == 2" class="w-16 h-auto text-success" />
+                        <CircleX v-if="createTunnelType == 3" class="w-16 h-auto text-error" />
+                        <h2 v-if="createTunnelType == 1" class="text-2xl font-black text-slate-800 tracking-tight">
+                            正在创建中...</h2>
+                        <h2 v-if="createTunnelType == 2" class="text-2xl font-black text-slate-800 tracking-tight">
+                            创建成功，即将前往控制台...</h2>
+                        <h2 v-if="createTunnelType == 3" class="text-2xl font-black text-slate-800 tracking-tight">
+                            创建失败，即将返回...</h2>
+                        <label v-if="createTunnelMessage && createTunnelType == 3" class="label text-sm mt-2">{{ createTunnelMessage
+                            }}</label>
+                    </div>
+                </div>
+
+                <div v-if="!isCreateTunnels" class="flex gap-2.5 p-5 pt-0">
                     <button @click="closeNetworkModal()"
                         class="flex-1 py-3 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors text-[13px]">
                         取消
@@ -314,30 +431,45 @@ const handleCardClick = (client: any) => {
 </template>
 
 <style scoped>
-/* 依次展示动画的关键 CSS */
+/* --- 状态切换动画 (Loading <-> List) --- */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+    transition: all 0.4s ease;
+}
+
+.fade-slide-enter-from {
+    opacity: 0;
+    transform: translateY(20px);
+    /* 从下方升起 */
+}
+
+.fade-slide-leave-to {
+    opacity: 0;
+    transform: translateY(-20px);
+    /* 向上方消失 */
+}
+
+/* --- 列表项动画微调 --- */
 .stagger-enter-active {
-    transition: all 0.5s cubic-bezier(0.3, 0, 0.2, 1);
-    /* 通过子组件传出的 --delay 变量计算延迟 */
-    transition-delay: calc(var(--delay) * 0.1s);
+    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    /* 这里的 delay 可以根据 index 动态计算，
+       但在 CSS 中我们保持基础设置，让它跟随父级 Transition 进入 */
 }
 
 .stagger-enter-from {
     opacity: 0;
-    transform: translateY(30px) scale(0.98);
+    transform: translateX(-10px);
+    /* 稍微带一点左侧滑入感，增加层次 */
 }
 
-/* 离开时的动画 */
+/* 保持你原有的 move 和 leave 逻辑... */
 .stagger-leave-active {
     transition: all 0.3s ease;
+    position: absolute !important;
+    width: 100%;
 }
 
-.stagger-leave-to {
-    opacity: 0;
-    transform: scale(0.95);
-}
-
-/* 当元素改变位置时的平滑移动 */
 .stagger-move {
-    transition: transform 0.4s ease;
+    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 </style>

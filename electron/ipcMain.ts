@@ -7,6 +7,7 @@ import SakuraFrpcManager from './frpc'
 import { getMinecraftServerStatus } from "./utils/mcStatus";
 import { proxyManager } from "./minecraft-lan-proxy";
 import net from 'net';
+import { app, shell } from "electron";
 const config = new Config();
 const downloader = new SakuraFrpDownloader()
 proxyManager.init();
@@ -52,6 +53,16 @@ export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWind
             socket.on('timeout', handleError);
         });
     });
+
+    // 打开链接
+    ipcMain.on('system:openUrl', (_event, url) => {
+        shell.openExternal(url);
+    });
+
+    // 获取版本信息
+    ipcMain.handle('system:version', () => {
+        return app.getVersion() // 返回 package.json 中的 version 字段
+    })
 
     // 配置
     ipcMain.handle("platform:list", (): PlatformConfig[] => {

@@ -1,5 +1,4 @@
 import { ipcRenderer, contextBridge, IpcRendererEvent } from 'electron'
-import { MinecraftProcessInfo } from './minecraft'
 import { PlatformConfig } from './config'
 
 // --------- Expose some API to the Renderer process ---------
@@ -29,6 +28,11 @@ contextBridge.exposeInMainWorld('windowControl', {
   minimize: () => ipcRenderer.send('window:minimize'),
   close: () => ipcRenderer.send('window:close')
 })
+
+contextBridge.exposeInMainWorld('system', {
+  openBrowser: (url: string) => ipcRenderer.send('system:openUrl', url),
+  getVersion: () => ipcRenderer.invoke("system:version")
+});
 
 contextBridge.exposeInMainWorld('mojang', {
   getProfile: (uuid: string) => ipcRenderer.invoke('mojang:getProfile', uuid)

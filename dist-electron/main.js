@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-import { app, ipcMain, BrowserWindow } from "electron";
+import electron, { app, ipcMain, shell, BrowserWindow } from "electron";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path$1 from "node:path";
@@ -216,7 +216,8 @@ class NatFrp {
       body: JSON.stringify(raw)
     });
     if (!res.ok) {
-      return null;
+      const err = await res.json();
+      return err;
     }
     const data = await res.json();
     return data;
@@ -242,7 +243,10 @@ const execAsync = promisify(exec);
 class MinecraftDetector {
   static async runCMD(cmd) {
     try {
-      const { stdout } = await execAsync(cmd, { windowsHide: true, maxBuffer: 1024 * 1024 * 50 });
+      const { stdout } = await execAsync(`chcp 65001 > nul && ${cmd}`, {
+        windowsHide: true,
+        maxBuffer: 1024 * 1024 * 50
+      });
       return stdout;
     } catch (err) {
       return "";
@@ -255,10 +259,12 @@ class MinecraftDetector {
       "pwsh"
     ];
     const exe = pwshPaths.find((p) => fs.existsSync(p)) || "powershell";
-    const base64 = Buffer.from(script, "utf16le").toString("base64");
+    const utf8Script = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${script}`;
     try {
-      const { stdout } = await execAsync(`"${exe}" -NoProfile -EncodedCommand ${base64}`, {
+      const { stdout } = await execAsync(`"${exe}" -NoProfile -Command "${utf8Script.replace(/"/g, '\\"')}"`, {
         windowsHide: true,
+        encoding: "utf8",
+        // 确保 Node.js 用 UTF8 解码
         maxBuffer: 1024 * 1024 * 50
       });
       return stdout;
@@ -292,12 +298,26 @@ class MinecraftDetector {
     const uuid = (_b = cmd.match(/--uuid\s+([^\s]+)/)) == null ? void 0 : _b[1];
     const accessToken = (_c = cmd.match(/--accessToken\s+([^\s]+)/)) == null ? void 0 : _c[1];
     let loginType = "offline";
-    if (accessToken) {
-      if (accessToken.split(".").length === 3) loginType = "msa";
-      else if (/^[0-9a-f]{32,}$/i.test(accessToken.replace(/-/g, ""))) loginType = "offline";
-      else loginType = "other";
+    let provider = void 0;
+    const injectorMatch = cmd.match(/authlib-injector[^\s=]*=([^"\s]+)/);
+    if (injectorMatch) {
+      loginType = "custom";
+      try {
+        const url = new URL(injectorMatch[1]);
+        provider = url.hostname;
+      } catch {
+        provider = injectorMatch[1];
+      }
+    } else if (accessToken && accessToken !== "0") {
+      if (accessToken.split(".").length === 3 && cmd.includes("--userType msa") && !injectorMatch) {
+        loginType = "msa";
+      } else {
+        loginType = "offline";
+      }
+    } else {
+      loginType = "other";
     }
-    return { username, uuid, loginType };
+    return { username, uuid, loginType, provider };
   }
   static parseVersion(cmd) {
     var _a, _b;
@@ -307,6 +327,7 @@ class MinecraftDetector {
    * 核心处理逻辑：去重与特征识别
    */
   static processRawResults(winProcesses, tcpConnections) {
+    var _a;
     const instanceMap = /* @__PURE__ */ new Map();
     for (const proc of winProcesses) {
       const cmd = proc.CommandLine || "";
@@ -319,19 +340,24 @@ class MinecraftDetector {
       const gameDirMatch = cmd.match(/--gameDir\s+"?([^"\s]+)"?/);
       const gameDir = gameDirMatch ? gameDirMatch[1] : "default_dir";
       const fingerprint = `${login.uuid || login.username}|${gameDir}|${version}`;
-      const ports = Array.from(new Set(
-        tcpConnections.filter((t) => t.OwningProcess === proc.ProcessId && t.LocalPort >= 1024).map((t) => t.LocalPort)
+      const validLanPorts = Array.from(new Set(
+        tcpConnections.filter(
+          (t) => t.OwningProcess === proc.ProcessId && t.LocalPort >= 1024 && (t.LocalAddress === "0.0.0.0" || t.LocalAddress === "::" || t.LocalAddress === "*")
+        ).map((t) => t.LocalPort)
       ));
       const currentInfo = {
         pid: proc.ProcessId,
         java: proc.Name,
         version,
         loader: loader.loader,
-        loaderVersion: loader.loaderVersion,
+        loaderVersion: (_a = loader.loaderVersion) == null ? void 0 : _a.replace(/[\s._-]+$/, ""),
         username: login.username,
         uuid: login.uuid,
         loginType: login.loginType,
-        lanPorts: ports
+        provider: login.provider,
+        // 将 provider 传入
+        lanPorts: validLanPorts,
+        isLan: validLanPorts.length > 0
       };
       if (instanceMap.has(fingerprint)) {
         const existing = instanceMap.get(fingerprint);
@@ -349,7 +375,7 @@ class MinecraftDetector {
    */
   static async detectAll() {
     const procScript = `Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java' } | Select-Object ProcessId, Name, CommandLine | ConvertTo-Json`;
-    const portScript = `Get-NetTCPConnection -State Listen | Select-Object LocalPort, OwningProcess | ConvertTo-Json`;
+    const portScript = `Get-NetTCPConnection -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess | ConvertTo-Json`;
     try {
       const [procRaw, portRaw] = await Promise.all([
         this.runPowerShell(procScript),
@@ -393,11 +419,12 @@ class MinecraftDetector {
     const tcpList = [];
     const portLines = portRaw.split(/\r?\n/);
     for (const line of portLines) {
-      const match = line.trim().match(/^TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)$/i);
+      const match = line.trim().match(/^TCP\s+(0\.0\.0\.0|\[::\]):(\d+)\s+\S+\s+LISTENING\s+(\d+)$/i);
       if (match && match[1] && match[2]) {
         tcpList.push({
-          LocalPort: parseInt(match[1], 10),
-          OwningProcess: parseInt(match[2], 10)
+          LocalAddress: match[1],
+          LocalPort: parseInt(match[2], 10),
+          OwningProcess: parseInt(match[3], 10)
         });
       }
     }
@@ -3855,6 +3882,12 @@ function loadIcpMain(ipcMain2, win2) {
       socket.on("timeout", handleError);
     });
   });
+  ipcMain2.on("system:openUrl", (_event, url) => {
+    shell.openExternal(url);
+  });
+  ipcMain2.handle("system:version", () => {
+    return app.getVersion();
+  });
   ipcMain2.handle("platform:list", () => {
     return config.getPlatforms();
   });
@@ -3978,6 +4011,13 @@ function loadIcpMain(ipcMain2, win2) {
     win2 == null ? void 0 : win2.close();
   });
 }
+if (typeof electron === "string") {
+  throw new TypeError("Not running in an Electron environment!");
+}
+const { env } = process;
+const isEnvSet = "ELECTRON_IS_DEV" in env;
+const getFromEnv = Number.parseInt(env.ELECTRON_IS_DEV, 10) === 1;
+const isDev = isEnvSet ? getFromEnv : !electron.app.isPackaged;
 createRequire(import.meta.url);
 const __dirname$1 = path$1.dirname(fileURLToPath(import.meta.url));
 process.env.APP_ROOT = path$1.join(__dirname$1, "..");
@@ -3999,7 +4039,7 @@ function createWindow() {
     frame: false,
     // 🧠 推荐开启
     useContentSize: true,
-    icon: path$1.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
+    icon: path$1.join(process.env.VITE_PUBLIC, "favicon.png"),
     title: "OneTunnel",
     webPreferences: {
       nodeIntegration: true,
@@ -4009,11 +4049,16 @@ function createWindow() {
   });
   win.setMenu(null);
   win.setMenuBarVisibility(false);
-  win.webContents.openDevTools();
+  if (process.env.NODE_MODE) {
+    win.webContents.openDevTools();
+  }
   win.on("maximize", () => {
     win == null ? void 0 : win.unmaximize();
   });
   loadIcpMain(ipcMain, win);
+  if (process.env.NODE_ENV === "development" || isDev) {
+    win.webContents.openDevTools();
+  }
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL);
   } else {

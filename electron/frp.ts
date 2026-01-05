@@ -137,7 +137,8 @@ export class NatFrp {
         })
 
         if (!res.ok) {
-            return null;
+            const err = await res.json();
+            return err;
         }
 
         const data = await res.json();

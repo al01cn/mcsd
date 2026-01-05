@@ -1,19 +1,21 @@
 <script lang="ts" setup>
+import { getVersion, openUrl } from '../lib';
 import { NatFrpUserInfo, Platform, PlatformConfig } from '../lib/config';
-import { ArrowRight, PlusCircle, Server, Key, Box, Trash, RotateCw, Loader2, BadgeCheck } from 'lucide-vue-next';
+import { ArrowRight, PlusCircle, Server, Key, Box, Trash, RotateCw, BadgeCheck } from 'lucide-vue-next';
 import { nanoid } from 'nanoid';
 import { onMounted, ref } from 'vue';
 import { toast } from 'vue-sonner';
+import { Dialog } from '../lib/useDialog';
 
 interface PlatformConfigWithUser extends PlatformConfig {
     userInfo?: NatFrpUserInfo | null; // 可以根据接口具体类型改
 }
 
+const version = ref('')
+
 const isModalOpen = ref(false)
 const network = ref<Platform>("sakurafrp")
 const networkKey = ref("")
-const tunnels = ref<any[]>([])
-const tipsText = ref("")
 
 const platforms = ref<PlatformConfigWithUser[]>([])
 
@@ -94,14 +96,22 @@ const getPlatforms = async () => {
 }
 
 const delPlatform = async (nanoid: string) => {
-    try {
-        await (window as any).platformAPI.remove(nanoid)
-        toast.success("删除成功")
-        await refreshPlatforms()
-    } catch (e) {
-        console.log(e)
-        toast.error("删除失败")
-    }
+    Dialog.warning({
+        title: '删除平台',
+        msg: '确定要删除此平台吗？',
+        confirmText: '确定删除',
+        onConfirm: async () => {
+            try {
+                await (window as any).platformAPI.remove(nanoid)
+                toast.success("删除成功")
+                await refreshPlatforms()
+            } catch (e) {
+                console.log(e)
+                toast.error("删除失败")
+            }
+        }
+    })
+
 }
 
 const togglePlatform = async (nanoid: string, sw: boolean) => {
@@ -114,27 +124,13 @@ const togglePlatform = async (nanoid: string, sw: boolean) => {
     }
 }
 
-const getTunnelInfo = async (token: string) => {
-    try {
-        const tunnelInfo = await (window as any).frp.natfrp_tunnelInfo(token)
-        tunnels.value = tunnelInfo
-    } catch (e) {
-        console.log(e)
-    }
-}
 
-const createTunnel = async (token: string, tunnelId: number) => {
-    try {
-        const tunnelInfo = await (window as any).frp.natfrp_tunnelCreate(token, tunnelId, 25565)
-        return tunnelInfo
-    } catch (e) {
-        console.log(e)
-    }
-}
 
 onMounted(async () => {
     await getPlatforms()
     await fetchUserInfoForPlatforms()
+    const v = await getVersion()
+    version.value = v
 })
 </script>
 
@@ -216,8 +212,7 @@ onMounted(async () => {
                             </div>
                             <div v-if="i.userInfo?.sign.traffic" class="flex flex-col">
                                 <span class="text-[9px] text-slate-400 font-black uppercase tracking-widest">可用流量</span>
-                                <span class="text-sm font-black text-slate-700">{{ (Math.round((i.userInfo?.sign.traffic
-                                    / 8) * 10) / 10 - 0.1).toFixed(1) + ' GiB'
+                                <span class="text-sm font-black text-slate-700">{{ i.userInfo?.sign.traffic + ' Gib'
                                 }}</span>
                             </div>
                         </div>
@@ -293,6 +288,33 @@ onMounted(async () => {
                                 确认退出
                             </button>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-settings-about" class="view-section space-y-6">
+            <div class="flex items-center justify-between mb-8">
+                <div>
+                    <h4
+                        class="text-xl font-black text-slate-800 tracking-tight border-l-4 border-primary pl-2.5 bg-slate-100">
+                        关于软件</h4>
+                    <label class="label text-slate-400 font-bold text-[12px] mt-1">软件版本：v{{ version }}</label>
+                </div>
+            </div>
+
+            <div class="relative min-h-100">
+                <div class="flex flex-col gap-2 mb-2 text-center font-black text-xl">
+                    <h1>支持的内网穿透平台</h1>
+                </div>
+                <div class="flex">
+                    <div class="flex flex-col items-center gap-4 p-4 rounded-xl cursor-pointer 
+                               transition-all duration-300 ease-in-out 
+                               hover:bg-white/10 hover:scale-105 active:scale-95"
+                        @click="openUrl('https://www.natfrp.com/')">
+                        <img src="/images/frp/sakurafrp.ico" class="w-24 h-auto" alt="sakurafrp">
+                        <Label class="label font-bold uppercase cursor-pointer">sakurafrp</Label>
+                        <Label class="label -mt-4 text-sm font-bold uppercase cursor-pointer">樱花内网穿透</Label>
                     </div>
                 </div>
             </div>

@@ -23,7 +23,7 @@ const confirmJoinNetwork = async() => {
         <div class="flex items-center justify-between">
             <div>
                 <h2 class="text-2xl font-black text-slate-800 tracking-tight">加入房间</h2>
-                <p class="text-slate-400 font-bold text-xs uppercase tracking-wider">输入联机码，与朋友进行联机游玩</p>
+                <p class="text-slate-400 font-bold text-xs uppercase tracking-wider">输入联机码，进入好友房间联机游玩</p>
             </div>
         </div>
 

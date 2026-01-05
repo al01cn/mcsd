@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { loadIcpMain } from './ipcMain'
+import isDev from 'electron-is-dev'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -44,7 +45,7 @@ function createWindow() {
 
     // 🧠 推荐开启
     useContentSize: true,
-    icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
+    icon: path.join(process.env.VITE_PUBLIC, 'favicon.png'),
     title: 'OneTunnel',
     webPreferences: {
       nodeIntegration: true,
@@ -56,7 +57,9 @@ function createWindow() {
   win.setMenu(null)
   win.setMenuBarVisibility(false)
 
-  win.webContents.openDevTools()
+  if (process.env.NODE_MODE) {
+    win.webContents.openDevTools()
+  }
 
   win.on('maximize', () => {
     win?.unmaximize()
@@ -68,6 +71,11 @@ function createWindow() {
   // win.webContents.on('did-finish-load', async () => {
 
   // })
+
+  // 在启动脚本中，你通常会设置 NODE_ENV=development
+  if (process.env.NODE_ENV === 'development' || isDev) {
+    win.webContents.openDevTools();
+  }
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)

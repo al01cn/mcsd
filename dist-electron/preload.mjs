@@ -24,6 +24,10 @@ electron.contextBridge.exposeInMainWorld("windowControl", {
   minimize: () => electron.ipcRenderer.send("window:minimize"),
   close: () => electron.ipcRenderer.send("window:close")
 });
+electron.contextBridge.exposeInMainWorld("system", {
+  openBrowser: (url) => electron.ipcRenderer.send("system:openUrl", url),
+  getVersion: () => electron.ipcRenderer.invoke("system:version")
+});
 electron.contextBridge.exposeInMainWorld("mojang", {
   getProfile: (uuid) => electron.ipcRenderer.invoke("mojang:getProfile", uuid)
 });

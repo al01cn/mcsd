@@ -9,7 +9,9 @@ import getMinecraftHead, { getMinecraftSkin } from '../lib/mcHead';
 import { MCProxyConfig } from '../lib/config';
 import { extractHostAndPort, MCProxyName } from '../lib';
 import { useCopy } from '../lib/useCopy';
+import { Dialog } from '../lib/useDialog';
 
+// --- 类型定义 ---
 interface MCInfo extends JavaStatusResponse {
     players: {
         max: number;
@@ -32,33 +34,35 @@ interface RunConfig {
     node_id?: number;
 }
 
+enum TunnelStatus {
+    Loading = '1',
+    Running = '2',
+    Reconnecting = '3',
+    Stopped = '4',
+}
+
+// --- 响应式变量 ---
 const router = useRouter()
-
-
 const isClient = ref(false)
+const isRun = ref(false) //
+const isDestoryed = ref(false); // 物理锁，防止销毁后继续执行逻辑
 const status = ref<MCInfo | null>(null);
 const playerHeadCache = new Map<string, string>();
 let timer: number | undefined;
 const intervalMs = 3000;
 
 const token = SessionCache.get<string>('runing_token')
-
-enum TunnelStatus {
-    Loading = '1',
-    Running = '2',
-    Stopped = '3',
-}
-
 const isRuning = ref<TunnelStatus>(TunnelStatus.Loading)
 const serverState = ref<"running" | "stopping">("stopping");
 const isReconnecting = ref(false);
+const IsError = ref(false)
 
 let previousPlayers = new Map<string, { name: string; head: string }>();
 
 const MAX_RETRY = ref(3);
 const retryCount = ref(0);
-const config = ref<RunConfig>() // 启动配置
-const McClientToken = ref('') // 客户端使用的Token
+const config = ref<RunConfig>()
+const McClientToken = ref('')
 
 const PROXY_ID = MCProxyName();
 const McConfig = ref<MCProxyConfig>();
@@ -76,131 +80,91 @@ let unbindLogs: (() => void) | null = null;
 // --- 工具函数 ---
 const notRep = (text: string) => text ? text.replace(/-/g, "") : "";
 
-const startFrp = async () => {
-    const token = config.value?.tunnel_token
-    const tunnel_id = config.value?.tunnel_id
-    await (window as any).sakurafrp.start(token, tunnel_id);
-}
+// --- 核心业务逻辑 ---
 
-const stopFrp = async () => {
-    const tunnel_id = config.value?.tunnel_id;
-    await (window as any).sakurafrp.stop(tunnel_id);
-}
-
-const startServer = (host: string = '127.0.0.1', port: number = 25565) => {
-    const serverName = status.value?.motd.clean
-    // 构造实时配置
-    const runConfig = {
-        id: PROXY_ID,
-        remoteHost: host,
-        remotePort: port,
-        fakeMotd: serverName || 'OneTunnel-局域网游戏'
-    } as MCProxyConfig;
-
-    McConfig.value = runConfig
-
-    // 强制检查 ID
-    console.log("🚀 发送到主进程的 ID:", PROXY_ID);
-
-    console.log("正在尝试启动代理:", runConfig);
-    (window as any).mcproxy.start(runConfig);
-}
-
-const stopServer = () => {
-    if (!McConfig.value) {
-        return
-    }
-    (window as any).mcproxy.stop(McConfig.value?.id);
-}
-
-// --- 计算属性：负责排序和过滤显示 ---
-const displayPlayers = computed(() => {
-    const players = status.value?.players?.sample;
-    if (!players || !players.length) return [];
-
-    const ownerUUID = config.value?.uuid;
-
-    // 排序逻辑：房主排第一，其余按名称字母排序（防止乱动）
-    return [...players].sort((a, b) => {
-        const idA = notRep(a.id);
-        const idB = notRep(b.id);
-
-        if (idA === ownerUUID) return -1;
-        if (idB === ownerUUID) return 1;
-        return a.name.localeCompare(b.name);
-    });
-});
-
-// --- 逻辑函数 ---
+/**
+ * 启动入口：区分房主和客机
+ */
 function startTunnel() {
     if (token.value) {
-        config.value = JSON.parse(atob(token.value)) as RunConfig
-        if (config.value?.tunnel_token && config.value?.tunnel_id) {
-            isClient.value = false
-            console.log("房主模式");
-            SessionCache.set('isRuning', true)
+        try {
+            config.value = JSON.parse(atob(token.value)) as RunConfig
+
+            // 房主模式：有隧道令牌和ID
+            if (config.value?.tunnel_token && config.value?.tunnel_id) {
+                isClient.value = false
+                console.log("模式: 房主创建房间");
+                startStatus()
+                return
+            }
+
+            // 客机模式
+            isClient.value = true
+            console.log("模式: 客机加入房间");
             startStatus()
-            return
+        } catch (e) {
+            console.error("Token 解析失败");
+            toRooms();
         }
-
-        isClient.value = true
-        console.log("客机模式");
-        SessionCache.set('isRuning', true)
-        startStatus()
+    } else {
+        toRooms();
     }
 }
 
-const getTcpDelay = async (host: string, port: number) => {
-    const delay = await (window as any).mcproxy.getTcpDelay(host, port);
-    if (delay != McDelay.value) {
-        McDelay.value = delay
+/**
+ * 流程控制中心
+ */
+async function startStatus() {
+    isRuning.value = TunnelStatus.Loading;
+
+    if (!isClient.value) {
+        // 房主：先启动 FRP 穿透，等待日志回调触发 start()
+        await startFrp();
+    } else {
+        // 客机：直接尝试连接
+        const host = config.value?.host || "127.0.0.1";
+        const port = config.value?.port || 25565;
+        await start(host, port);
     }
 }
 
-function detectPlayerChanges(newPlayers: { id: string; name: string; head: string }[]) {
-    const ownerUUID = config.value?.uuid;
-    const newMap = new Map<string, { name: string; head: string }>();
+/**
+ * 启动服务轮询与代理
+ */
+async function start(host: string = "127.0.0.1", port: number = 25565) {
+    try {
+        // 初次尝试获取状态，失败会抛出异常进入 catch
+        await refreshStatus(host, port);
 
-    newPlayers.forEach(p => {
-        if (p.name !== "Anonymous Player" && notRep(p.id) !== ownerUUID) {
-            newMap.set(p.id, { name: p.name, head: p.head });
-        }
-    });
+        // 成功后开启延迟检测和定时器
+        await getTcpDelay(host, port);
+        if (timer) clearInterval(timer);
+        timer = window.setInterval(() => {
+            refreshStatus(host, port);
+            getTcpDelay(host, port);
+        }, intervalMs);
 
-    const joined: any[] = [];
-    const left: any[] = [];
-
-    for (const [id, data] of newMap) {
-        if (!previousPlayers.has(id)) joined.push({ id, name: data.name, head: data.head });
+        // 启动本地代理
+        startServer(host, port);
+        isRun.value = true;
+    } catch (err) {
+        console.error("启动失败，准备触发重试逻辑");
+        ReconnectServer();
     }
-    for (const [id, data] of previousPlayers) {
-        if (!newMap.has(id)) left.push({ id, name: data.name, head: data.head });
-    }
-
-    previousPlayers = newMap;
-    return { joined, left };
 }
 
-function isEqualStatus(a: MCInfo | null, b: MCInfo | null) {
-    if (!a || !b) return false;
-    if (a.players.online !== b.players.online || a.players.max !== b.players.max) return false;
-
-    const sa = a.players.sample || [];
-    const sb = b.players.sample || [];
-    if (sa.length !== sb.length) return false;
-
-    return sa.every((p, i) => p.id === sb[i].id && p.name === sb[i].name && p.head === sb[i].head);
-}
-
+/**
+ * 刷新服务器状态
+ */
 async function refreshStatus(host: string = "127.0.0.1", port: number = 25565) {
-    const ownerUUID = config.value?.uuid;
+    if (isDestoryed.value) return;
 
     try {
         const newStatus = (await fetchServerStatus(host, port)) as MCInfo;
-        if (!newStatus) throw new Error("无法获取状态");
+        if (!newStatus) throw new Error("无法获取 Minecraft 响应");
 
+        // 处理玩家数据与头像缓存
         if (newStatus.players?.sample) {
-            // 1. 处理头像缓存
             const sampleWithHead = await Promise.all(
                 newStatus.players.sample.map(async player => {
                     let head = playerHeadCache.get(player.id) || "";
@@ -215,12 +179,13 @@ async function refreshStatus(host: string = "127.0.0.1", port: number = 25565) {
                 })
             );
 
-            // 2. 过滤掉房主以外的 Anonymous Player
+            // 过滤房主外的匿名玩家
+            const ownerUUID = config.value?.uuid;
             const realPlayers = sampleWithHead.filter(p => {
                 return p.name !== "Anonymous Player" || notRep(p.id) === ownerUUID;
             });
 
-            // 3. 进出检测
+            // 进出检测日志
             const { joined, left } = detectPlayerChanges(realPlayers);
             joined.forEach(p => console.log("玩家进入:", p.name));
             left.forEach(p => console.log("玩家离开:", p.name));
@@ -228,164 +193,252 @@ async function refreshStatus(host: string = "127.0.0.1", port: number = 25565) {
             newStatus.players.sample = realPlayers;
         }
 
-        // 4. 统一更新状态 (只在数据变化时触发，且不再此处手动排序)
+        // 更新状态机
         if (!isEqualStatus(status.value, newStatus)) {
             status.value = newStatus;
         }
 
         serverState.value = "running";
         isReconnecting.value = false;
+        isRuning.value = TunnelStatus.Running;
+        IsError.value = false;
         retryCount.value = 0;
     } catch (err) {
-        console.warn("无法连接 Minecraft 服务:", err);
-        if (retryCount.value < MAX_RETRY.value) {
-            isReconnecting.value = true;
-            retryCount.value++;
-            setTimeout(refreshStatus, 2000);
+        if (!isRun.value) {
+            // 如果是还没启动成功就报错，直接抛出，让 start() 处理
+            throw err;
         } else {
-            serverState.value = "stopping";
-            isReconnecting.value = false;
+            // 如果是运行中报错，执行重连
+            ReconnectServer();
         }
     }
 }
 
-const closeServer = () => {
-    // 1. 停止轮询定时器，防止后台继续请求 API
-    stopServer()
-    if (!isClient) {
-        stopFrp()
+/**
+ * 重试与重连逻辑
+ */
+const ReconnectServer = () => {
+    if (isDestoryed.value) return;
+
+    // 检查重试次数
+    if (retryCount.value >= MAX_RETRY.value) {
+        console.error("❌ 已达到最大重试次数");
+        isDestoryed.value = true;
+        IsError.value = true;
+        isRuning.value = TunnelStatus.Stopped;
+        isReconnecting.value = false;
+
+        // 清理并退出
+        closeServer(true);
+        return;
     }
+
+    isRuning.value = TunnelStatus.Reconnecting;
+    isReconnecting.value = true;
+    retryCount.value++;
+
+    console.log(`🔄 正在进行第 ${retryCount.value}/${MAX_RETRY.value} 次尝试...`);
+
+    setTimeout(async () => {
+        if (!isDestoryed.value) {
+            const host = McProxyHostAndPort.value.host || config.value?.host || "127.0.0.1";
+            const port = McProxyHostAndPort.value.port || config.value?.port || 25565;
+
+            try {
+                // 再次尝试执行 start 流程
+                await start(host, port);
+            } catch (e) {
+                // 如果 start 依然失败，它会递归调用 ReconnectServer
+            }
+        }
+    }, 3000);
+}
+
+// --- 资源管理与生命周期 ---
+
+const startFrp = async () => {
+    const token = config.value?.tunnel_token;
+    const tunnel_id = config.value?.tunnel_id;
+    await (window as any).sakurafrp.start(token, tunnel_id);
+}
+
+const stopFrp = async () => {
+    const tunnel_id = config.value?.tunnel_id;
+    if (tunnel_id) await (window as any).sakurafrp.stop(tunnel_id);
+}
+
+const startServer = (host: string, port: number) => {
+    const serverName = status.value?.motd.clean;
+    const runConfig = {
+        id: PROXY_ID,
+        remoteHost: host,
+        remotePort: port,
+        fakeMotd: serverName || 'OneTunnel-局域网游戏'
+    } as MCProxyConfig;
+
+    McConfig.value = runConfig;
+    (window as any).mcproxy.start(runConfig);
+}
+
+const stopServer = () => {
+    if (McConfig.value) {
+        (window as any).mcproxy.stop(McConfig.value.id);
+    }
+}
+
+const closeServer = (isFailed = false) => {
+    isDestoryed.value = true;
+
+    stopServer();
+    if (!isClient.value) stopFrp();
 
     if (timer) {
         clearInterval(timer);
         timer = undefined;
     }
 
-    if (unbindStatus) unbindStatus();
+    if (unbindStatus) { unbindStatus(); unbindStatus = null; }
+    if (unbindLogs) { unbindLogs(); unbindLogs = null; }
 
-    if (unbindLogs) unbindLogs()
-
-    // 2. 重置所有响应式状态，回到初始值
     status.value = null;
-    isRuning.value = TunnelStatus.Stopped; // 设为停止状态
+    isRuning.value = TunnelStatus.Stopped;
     serverState.value = "stopping";
-    retryCount.value = 0;
-    isReconnecting.value = false;
 
-    // 3. 清理玩家相关缓存，防止下次启动时逻辑冲突
-    playerHeadCache.clear();
-    previousPlayers.clear();
-
-    // 4. 清除 Token (SessionCache)
-    // 根据你的需求，如果不希望下次进来还自动启动，则清除它
+    // 如果是由于失败关闭，IsError 已经在 ReconnectServer 设置
     SessionCache.remove('runing_token');
-    SessionCache.remove('isRuning')
-
-    // 5. 如果有进行中的重连逻辑，可以在这里中断（可选）
-    // ...
+    SessionCache.remove('isRuning');
 
     setTimeout(() => {
-        toRooms()
-    }, 3000)
-
-    console.log("服务已成功关闭并重置数据");
+        toRooms();
+    }, 3000);
 };
 
+const close = () => {
+    Dialog.warning({
+        title: isClient.value ? '退出联机房间' : '停止并关闭房间',
+        msg: isClient.value ? '确定要退出联机房间吗？' : '确定停止并关闭房间吗？',
+        cancelText: '点错了',
+        confirmText: '确定',
+        onConfirm() { closeServer() },
+    })
+}
+
 const toRooms = () => {
-    // 6. 执行路由跳转
     router.push('/create_rooms');
 }
 
-async function startStatus() {
-    if (!isClient.value) {
-        await startFrp()
-        return
-    }
+// --- 辅助逻辑 ---
 
-    const host = config.value?.host
-    const port = config.value?.port
-    start(host, port)
+const getTcpDelay = async (host: string, port: number) => {
+    const delay = await (window as any).mcproxy.getTcpDelay(host, port);
+    if (delay != McDelay.value) McDelay.value = delay;
 }
 
-async function start(host: string = "127.0.0.1", port: number = 25565) {
-    await refreshStatus(host, port)
-    await getTcpDelay(host, port);
-    timer = window.setInterval(() => { refreshStatus(host, port); getTcpDelay(host, port); }, intervalMs);
-    startServer(host, port)
+function detectPlayerChanges(newPlayers: any[]) {
+    const ownerUUID = config.value?.uuid;
+    const newMap = new Map<string, { name: string; head: string }>();
+    newPlayers.forEach(p => {
+        if (p.name !== "Anonymous Player" && notRep(p.id) !== ownerUUID) {
+            newMap.set(p.id, { name: p.name, head: p.head });
+        }
+    });
+    const joined: any[] = [];
+    const left: any[] = [];
+    for (const [id, data] of newMap) if (!previousPlayers.has(id)) joined.push({ id, name: data.name, head: data.head });
+    for (const [id, data] of previousPlayers) if (!newMap.has(id)) left.push({ id, name: data.name, head: data.head });
+    previousPlayers = newMap;
+    return { joined, left };
 }
+
+function isEqualStatus(a: MCInfo | null, b: MCInfo | null) {
+    if (!a || !b) return false;
+    if (a.players.online !== b.players.online || a.players.max !== b.players.max) return false;
+    const sa = a.players.sample || [];
+    const sb = b.players.sample || [];
+    if (sa.length !== sb.length) return false;
+    return sa.every((p, i) => p.id === sb[i].id && p.name === sb[i].name);
+}
+
+const displayPlayers = computed(() => {
+    const players = status.value?.players?.sample;
+    if (!players || !players.length) return [];
+    const ownerUUID = config.value?.uuid;
+    return [...players].sort((a, b) => {
+        const idA = notRep(a.id);
+        const idB = notRep(b.id);
+        if (idA === ownerUUID) return -1;
+        if (idB === ownerUUID) return 1;
+        return a.name.localeCompare(b.name);
+    });
+});
 
 const { copyToClipboard } = useCopy();
 
+// --- 生命周期钩子 ---
+
 onMounted(() => {
-    // 先挂载监听器，再启动服务
     unbindStatus = (window as any).mcproxy.onStatus((data: any) => {
-        console.log("📥 收到主进程反馈:", data);
-
-        if (data.id !== PROXY_ID) {
-            console.warn(`ID 匹配失败! 收到:${data.id}, 当前预期:${PROXY_ID}`);
-            return;
-        }
-
+        if (data.id !== PROXY_ID) return;
         if (data.success) {
-            console.log("✅ 服务器启动成功");
-            // isRuning.value = TunnelStatus.Running; // 在这里切换状态！
-            if (data.localPort) {
-                MclocalPort.value = data.localPort
+            if (data.localPort) MclocalPort.value = data.localPort;
+            if (isRun.value) {
+                setTimeout(() => {
+                    isRuning.value = TunnelStatus.Running;
+                    SessionCache.set('isRuning', true);
+                }, 1000);
             }
-
-            setTimeout(() => {
-                isRuning.value = TunnelStatus.Running
-            }, 3000)
         } else {
-            console.error("❌ 启动失败:", data.message);
-            // 这里可以弹窗提示用户端口被占用
+            // 如果本地代理启动失败（端口占用等），也触发重试
+            console.error("代理启动失败", data.message);
+            ReconnectServer();
         }
     });
 
-    // 监听日志输出
     unbindLogs = (window as any).sakurafrp.onLog((data: any) => {
-        const line = data.message;
-        // 1. 打印原始日志方便排查
-        console.log("收到日志:", line);
-
-        // 2. 尝试提取
         const result = extractHostAndPort(data.message);
-
         if (result) {
-            McProxyHostAndPort.value = {
-                host: result.host,
-                port: Number(result.port),
-            }
-
+            McProxyHostAndPort.value = { host: result.host, port: Number(result.port) };
             if (!isClient.value) {
-                const uuid = config.value?.uuid
                 const rawData: RunConfig = {
                     host: result.host,
                     port: Number(result.port),
-                    uuid: uuid
-                }
-                const token = btoa(JSON.stringify(rawData))
-                McClientToken.value = token
+                    uuid: config.value?.uuid
+                };
+                McClientToken.value = btoa(JSON.stringify(rawData));
             }
-
-            const host = McProxyHostAndPort.value.host
-            const port = McProxyHostAndPort.value.port
-
-            start(host, port)
+            start(McProxyHostAndPort.value.host, McProxyHostAndPort.value.port);
         }
     })
 
     startTunnel()
 })
-onUnmounted(() => { if (timer) clearInterval(timer); if (unbindStatus) unbindStatus(); if (unbindLogs) unbindLogs(); });
+
+onUnmounted(() => {
+    if (isRuning.value !== TunnelStatus.Stopped) {
+        stopServer();
+        if (!isClient.value) stopFrp();
+    }
+    if (timer) clearInterval(timer);
+    if (unbindStatus) unbindStatus();
+    if (unbindLogs) unbindLogs();
+});
 </script>
 
 <template>
-    <div id="view-console-loading" v-if="isRuning == TunnelStatus.Loading"
+    <div id="view-console-loading" v-if="isRuning == TunnelStatus.Loading || isRuning == TunnelStatus.Reconnecting"
         class="view-section w-full space-y-6 flex flex-col justify-center items-center">
         <div class="px-6 flex flex-col justify-center items-center h-150">
             <Radius class="w-32 h-32 text-[#4DB7FF] animate-spin mb-4" />
-            <h2 class="text-2xl font-black text-slate-800 tracking-tight">正在启动中...</h2>
+            <h2 class="text-2xl font-black text-slate-800 tracking-tight text-center">
+                <template v-if="isRuning == TunnelStatus.Loading">
+                    {{ isClient ? '正在加入房间...' : '正在创建联机服务...' }}
+                </template>
+                <template v-else>
+                    检测到{{ isClient ? '房间连接' : '服务' }}异常<br />
+                    <span class="text-primary">正在尝试第 {{ retryCount }}/{{ MAX_RETRY }} 次重连...</span>
+                </template>
+            </h2>
+            <p class="text-slate-400 text-sm mt-2 font-medium">请稍候...</p>
         </div>
     </div>
 
@@ -393,7 +446,16 @@ onUnmounted(() => { if (timer) clearInterval(timer); if (unbindStatus) unbindSta
         class="view-section w-full space-y-6 flex flex-col justify-center items-center">
         <div class="px-6 flex flex-col justify-center items-center h-150">
             <Radius class="w-32 h-32 text-[#4DB7FF] animate-spin mb-4" />
-            <h2 class="text-2xl font-black text-slate-800 tracking-tight">正在关闭中，3秒后回到主页...</h2>
+            <h2 class="text-2xl font-black text-slate-800 tracking-tight text-center">
+                <template v-if="IsError">
+                    {{ isClient ? '加入房间失败' : '创建房间失败' }}<br />
+                    <span class="text-sm font-medium text-slate-500">{{ isClient ? '请检查联机码是否正确或网络是否通畅，可能房间已经不在了' : '请检查内网穿透平台密钥是否填写正确，隧道是否被占用' }}</span>
+                </template>
+                <template v-else>
+                    {{ isClient ? '正在退出房间...' : '正在销毁房间...' }}
+                </template>
+            </h2>
+            <p class="mt-4 text-slate-400 font-bold">3秒后自动回到主页</p>
         </div>
     </div>
 
@@ -411,9 +473,9 @@ onUnmounted(() => { if (timer) clearInterval(timer); if (unbindStatus) unbindSta
                 </div>
 
                 <div class="w-67">
-                    <button @click="closeServer()"
+                    <button @click="close()"
                         class="w-full flex-1 py-3 rounded-xl font-bold text-white bg-error hover:bg-red-500 transition-all active:scale-95 text-[13px]">
-                        停止并关闭房间
+                        {{ isClient ? '退出联机房间' : '停止并关闭房间' }}
                     </button>
                 </div>
             </div>

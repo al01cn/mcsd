@@ -9,7 +9,7 @@ const execAsync = promisify(exec);
 // --- 接口定义 ---
 
 export type ModLoader = "Vanilla" | "Forge" | "Fabric" | "Quilt" | "NeoForge";
-export type LoginType = "offline" | "msa" | "other";
+export type LoginType = "offline" | "msa" | "custom" | "other";
 
 export interface ModLoaderInfo {
     loader: ModLoader;
@@ -20,6 +20,7 @@ export interface LoginInfo {
     username?: string;
     uuid?: string;
     loginType?: LoginType;
+    provider?: string; // 新增：记录第三方登录的服务商域名
 }
 
 export interface MinecraftProcessInfo {
@@ -31,7 +32,9 @@ export interface MinecraftProcessInfo {
     username?: string;
     uuid?: string;
     loginType?: LoginType;
+    provider?: string;
     lanPorts: number[];
+    isLan: boolean;
 }
 
 export interface WinProcess {
@@ -41,6 +44,7 @@ export interface WinProcess {
 }
 
 export interface TcpConnection {
+    LocalAddress: string;
     LocalPort: number;
     OwningProcess: number;
 }
@@ -67,10 +71,14 @@ export class MinecraftDetector {
 
     private static async runCMD(cmd: string): Promise<string> {
         try {
-            const { stdout } = await execAsync(cmd, { windowsHide: true, maxBuffer: 1024 * 1024 * 50 });
+            // chcp 65001 是切换到 UTF-8 代码页
+            const { stdout } = await execAsync(`chcp 65001 > nul && ${cmd}`, {
+                windowsHide: true,
+                maxBuffer: 1024 * 1024 * 50
+            });
             return stdout;
         } catch (err) {
-            return ""; // 发生错误时返回空字符串以防后续 JSON 解析崩溃
+            return "";
         }
     }
 
@@ -81,11 +89,14 @@ export class MinecraftDetector {
             "pwsh"
         ];
         const exe = pwshPaths.find(p => fs.existsSync(p)) || "powershell";
-        const base64 = Buffer.from(script, "utf16le").toString("base64");
-        
+
+        // 强制声明输出为 UTF8，并确保以 UTF8 捕获 stdout
+        const utf8Script = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${script}`;
+
         try {
-            const { stdout } = await execAsync(`"${exe}" -NoProfile -EncodedCommand ${base64}`, {
+            const { stdout } = await execAsync(`"${exe}" -NoProfile -Command "${utf8Script.replace(/"/g, '\\"')}"`, {
                 windowsHide: true,
+                encoding: "utf8", // 确保 Node.js 用 UTF8 解码
                 maxBuffer: 1024 * 1024 * 50
             });
             return stdout;
@@ -118,14 +129,37 @@ export class MinecraftDetector {
         const username = cmd.match(/--username\s+([^\s]+)/)?.[1];
         const uuid = cmd.match(/--uuid\s+([^\s]+)/)?.[1];
         const accessToken = cmd.match(/--accessToken\s+([^\s]+)/)?.[1];
-        let loginType: LoginType = "offline";
 
-        if (accessToken) {
-            if (accessToken.split('.').length === 3) loginType = "msa";
-            else if (/^[0-9a-f]{32,}$/i.test(accessToken.replace(/-/g, ''))) loginType = "offline";
-            else loginType = "other";
+        let loginType: LoginType = "offline";
+        let provider: string | undefined = undefined;
+
+        // 1. 检测是否包含 authlib-injector (第三方登录)
+        // 匹配格式: authlib-injector-x.x.x.jar=https://domain.com/api/yggdrasil/
+        const injectorMatch = cmd.match(/authlib-injector[^\s=]*=([^"\s]+)/);
+
+        if (injectorMatch) {
+            loginType = "custom";
+            try {
+                const url = new URL(injectorMatch[1]);
+                provider = url.hostname; // 提取如: littleskin.cn
+            } catch {
+                provider = injectorMatch[1]; // fallback
+            }
         }
-        return { username, uuid, loginType };
+        // 2. 如果没有第三方注入，则根据 accessToken 判断
+        else if (accessToken && accessToken !== "0") {
+            // 微软登录的 Token 通常是 JWT 格式（三个段），或者是很长的 Base64
+            // 这里沿用你的逻辑并增强
+            if (accessToken.split('.').length === 3 && cmd.includes("--userType msa") && !injectorMatch) {
+                loginType = "msa";
+            } else {
+                loginType = "offline";
+            }
+        } else {
+            loginType = "other";
+        }
+
+        return { username, uuid, loginType, provider };
     }
 
     static parseVersion(cmd: string): string | undefined {
@@ -149,7 +183,7 @@ export class MinecraftDetector {
             const login = this.parseLoginInfo(cmd);
             const version = this.parseVersion(cmd);
             const loader = this.parseModLoader(cmd);
-            
+
             // 提取游戏目录，增加鲁棒性
             const gameDirMatch = cmd.match(/--gameDir\s+"?([^"\s]+)"?/);
             const gameDir = gameDirMatch ? gameDirMatch[1] : "default_dir";
@@ -158,23 +192,35 @@ export class MinecraftDetector {
             // 解决 PID 不同但属于同一个游戏实例的问题
             const fingerprint = `${login.uuid || login.username}|${gameDir}|${version}`;
 
-            // 端口去重：过滤掉同一个 PID 在 IPv4/IPv6 下重复报告的端口
-            const ports = Array.from(new Set(
+            /**
+                     * 过滤逻辑：
+                     * 1. 端口必须归属于当前进程
+                     * 2. 端口必须 >= 1024
+                     * 3. 核心逻辑：LocalAddress 必须是 '0.0.0.0' 或 '::' (IPv6)，
+                     * 排除 '127.0.0.1'，因为那是第三方登录或调试用的内部端口。
+                     */
+            const validLanPorts = Array.from(new Set(
                 tcpConnections
-                    .filter(t => t.OwningProcess === proc.ProcessId && t.LocalPort >= 1024)
+                    .filter(t =>
+                        t.OwningProcess === proc.ProcessId &&
+                        t.LocalPort >= 1024 &&
+                        (t.LocalAddress === '0.0.0.0' || t.LocalAddress === '::' || t.LocalAddress === '*')
+                    )
                     .map(t => t.LocalPort)
-            ));
+            ))
 
             const currentInfo: MinecraftProcessInfo = {
                 pid: proc.ProcessId,
                 java: proc.Name,
                 version,
                 loader: loader.loader,
-                loaderVersion: loader.loaderVersion,
+                loaderVersion: loader.loaderVersion?.replace(/[\s._-]+$/, ''),
                 username: login.username,
                 uuid: login.uuid,
                 loginType: login.loginType,
-                lanPorts: ports
+                provider: login.provider, // 将 provider 传入
+                lanPorts: validLanPorts,
+                isLan: validLanPorts.length > 0
             };
 
             // 去重逻辑：
@@ -197,7 +243,7 @@ export class MinecraftDetector {
      */
     static async detectAll(): Promise<MinecraftProcessInfo[]> {
         const procScript = `Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java' } | Select-Object ProcessId, Name, CommandLine | ConvertTo-Json`;
-        const portScript = `Get-NetTCPConnection -State Listen | Select-Object LocalPort, OwningProcess | ConvertTo-Json`;
+        const portScript = `Get-NetTCPConnection -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess | ConvertTo-Json`;
 
         try {
             const [procRaw, portRaw] = await Promise.all([
@@ -216,6 +262,9 @@ export class MinecraftDetector {
             const procList = parseJson<WinProcess>(procRaw);
             const tcpList = parseJson<TcpConnection>(portRaw);
 
+            // console.log(procList);
+            // console.log("tcpList", tcpList);
+
             if (procList.length === 0) throw new Error("No processes");
 
             return this.processRawResults(procList, tcpList);
@@ -230,7 +279,7 @@ export class MinecraftDetector {
     static async detectAllByCMD(): Promise<MinecraftProcessInfo[]> {
         const procRaw = await this.runCMD(`wmic process where "name like 'java%'" get ProcessId,Name,CommandLine /FORMAT:CSV`);
         const procList: WinProcess[] = [];
-        
+
         const lines = procRaw.split(/\r?\n/).filter(l => l.trim());
         for (let i = 1; i < lines.length; i++) {
             const parts = (lines[i] as string).split(",");
@@ -247,11 +296,12 @@ export class MinecraftDetector {
         const tcpList: TcpConnection[] = [];
         const portLines = portRaw.split(/\r?\n/);
         for (const line of portLines) {
-            const match = line.trim().match(/^TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)$/i);
+            const match = line.trim().match(/^TCP\s+(0\.0\.0\.0|\[::\]):(\d+)\s+\S+\s+LISTENING\s+(\d+)$/i);
             if (match && match[1] && match[2]) {
-                tcpList.push({ 
-                    LocalPort: parseInt(match[1], 10), 
-                    OwningProcess: parseInt(match[2], 10) 
+                tcpList.push({
+                    LocalAddress: match[1],
+                    LocalPort: parseInt(match[2], 10),
+                    OwningProcess: parseInt(match[3], 10)
                 });
             }
         }
