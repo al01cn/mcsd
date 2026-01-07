@@ -21,7 +21,7 @@ export class LoggerService {
 
     // 初始化 IPC 监听，供渲染进程调用
     initIpc() {
-        ipcMain.on('append-log', (event, { level, message, data }) => {
+        ipcMain.on('system:log', (_event, { level, message, data }) => {
             const logger = log.scope('Renderer');
             // @ts-ignore
             logger[level](message, data || '');
@@ -31,6 +31,10 @@ export class LoggerService {
     // 主进程直接调用的方法
     info(msg: string, ...args: any[]) {
         log.info(msg, ...args);
+    }
+
+    warn(msg: string, ...args: any[]) {
+        log.warn(msg, ...args);
     }
 
     error(msg: string, ...args: any[]) {

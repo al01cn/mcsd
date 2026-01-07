@@ -1,92 +1,75 @@
-var __defProp = Object.defineProperty;
-var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-import { app, ipcMain, shell, BrowserWindow } from "electron";
-import { fileURLToPath } from "node:url";
-import path$1 from "node:path";
-import path from "path";
-import fs from "fs";
-import { webcrypto } from "node:crypto";
-import { exec, spawn } from "child_process";
-import os from "os";
-import require$$2, { promisify } from "util";
-import https from "https";
-import require$$1 from "crypto";
-import require$$0$1 from "assert";
-import * as net from "net";
-import net__default from "net";
-import require$$1$1 from "events";
-import require$$0$2 from "dns";
-import * as require$$0 from "dgram";
-import require$$0__default from "dgram";
-import net$1 from "node:net";
-import os$1 from "node:os";
-const urlAlphabet = "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict";
-const POOL_SIZE_MULTIPLIER = 128;
-let pool, poolOffset;
-function fillPool(bytes) {
-  if (!pool || pool.length < bytes) {
-    pool = Buffer.allocUnsafe(bytes * POOL_SIZE_MULTIPLIER);
-    webcrypto.getRandomValues(pool);
-    poolOffset = 0;
-  } else if (poolOffset + bytes > pool.length) {
-    webcrypto.getRandomValues(pool);
-    poolOffset = 0;
-  }
-  poolOffset += bytes;
+var an = Object.defineProperty;
+var sn = (n, t, e) => t in n ? an(n, t, { enumerable: !0, configurable: !0, writable: !0, value: e }) : n[t] = e;
+var y = (n, t, e) => sn(n, typeof t != "symbol" ? t + "" : t, e);
+import Lt, { app as H, ipcMain as Ie, shell as cn, BrowserWindow as mr } from "electron";
+import { fileURLToPath as ln } from "node:url";
+import Y from "node:path";
+import F from "path";
+import B from "fs";
+import { webcrypto as At } from "node:crypto";
+import un, { exec as dn, spawn as fn } from "child_process";
+import le from "os";
+import Q, { promisify as hn } from "util";
+import vr from "https";
+import Le from "crypto";
+import ue from "events";
+import pn from "http";
+import D from "assert";
+import * as Rt from "net";
+import wr from "net";
+import gn from "dns";
+import * as yn from "dgram";
+import br from "dgram";
+import mn from "node:net";
+import vn from "node:os";
+const wn = "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict", bn = 128;
+let X, ie;
+function En(n) {
+  !X || X.length < n ? (X = Buffer.allocUnsafe(n * bn), At.getRandomValues(X), ie = 0) : ie + n > X.length && (At.getRandomValues(X), ie = 0), ie += n;
 }
-function nanoid(size = 21) {
-  fillPool(size |= 0);
-  let id = "";
-  for (let i = poolOffset - size; i < poolOffset; i++) {
-    id += urlAlphabet[pool[i] & 63];
-  }
-  return id;
+function Er(n = 21) {
+  En(n |= 0);
+  let t = "";
+  for (let e = ie - n; e < ie; e++)
+    t += wn[X[e] & 63];
+  return t;
 }
-class Config {
+class _n {
   constructor() {
-    __publicField(this, "name", "config");
-    __publicField(this, "dataDir");
-    __publicField(this, "configPath");
-    this.dataDir = path.join(app.getPath("userData"), "data");
-    this.configPath = path.join(this.dataDir, "config.json");
-    this.ensure();
+    y(this, "name", "config");
+    y(this, "dataDir");
+    y(this, "configPath");
+    this.dataDir = F.join(H.getPath("userData"), "data"), this.configPath = F.join(this.dataDir, "config.json"), this.ensure();
   }
   /* ---------- Init ---------- */
   ensure() {
-    if (!fs.existsSync(this.dataDir)) {
-      fs.mkdirSync(this.dataDir, { recursive: true });
-    }
-    if (!fs.existsSync(this.configPath)) {
-      const initial = {
+    if (B.existsSync(this.dataDir) || B.mkdirSync(this.dataDir, { recursive: !0 }), !B.existsSync(this.configPath)) {
+      const t = {
         platforms: []
       };
-      this.write(initial);
+      this.write(t);
     }
   }
   /* ---------- Base IO ---------- */
   read() {
     try {
-      const raw = fs.readFileSync(this.configPath, "utf-8");
-      const parsed = JSON.parse(raw);
-      const platformsRaw = Array.isArray(
-        parsed.platforms
-      ) ? parsed.platforms : [];
-      const platforms = platformsRaw.map((p) => ({
-        nanoid: p.nanoid,
-        platform: p.platform,
-        secret: p.secret,
-        enabled: typeof p.enabled === "boolean" ? p.enabled : true
-      }));
-      return { platforms };
+      const t = B.readFileSync(this.configPath, "utf-8"), e = JSON.parse(t);
+      return { platforms: (Array.isArray(
+        e.platforms
+      ) ? e.platforms : []).map((r) => ({
+        nanoid: r.nanoid,
+        platform: r.platform,
+        secret: r.secret,
+        enabled: typeof r.enabled == "boolean" ? r.enabled : !0
+      })) };
     } catch {
       return { platforms: [] };
     }
   }
-  write(data) {
-    fs.writeFileSync(
+  write(t) {
+    B.writeFileSync(
       this.configPath,
-      JSON.stringify(data, null, 2),
+      JSON.stringify(t, null, 2),
       "utf-8"
     );
   }
@@ -98,314 +81,247 @@ class Config {
   }
   /** 只获取启用的平台（很常用） */
   getEnabledPlatforms() {
-    return this.read().platforms.filter((p) => p.enabled);
+    return this.read().platforms.filter((t) => t.enabled);
   }
-  getPlatform(nanoid2) {
-    return this.read().platforms.find((p) => p.nanoid === nanoid2);
+  getPlatform(t) {
+    return this.read().platforms.find((e) => e.nanoid === t);
   }
-  addPlatform(platform) {
-    const cfg = this.read();
-    const newPlatform = {
-      nanoid: nanoid(),
-      platform: platform.platform,
-      secret: platform.secret,
-      enabled: true
+  addPlatform(t) {
+    const e = this.read(), i = {
+      nanoid: Er(),
+      platform: t.platform,
+      secret: t.secret,
+      enabled: !0
     };
-    cfg.platforms.push(newPlatform);
-    this.write(cfg);
-    return newPlatform;
+    return e.platforms.push(i), this.write(e), i;
   }
-  updatePlatform(nanoid2, patch) {
-    const cfg = this.read();
-    const target = cfg.platforms.find((p) => p.nanoid === nanoid2);
-    if (!target) return;
-    Object.assign(target, patch);
-    this.write(cfg);
+  updatePlatform(t, e) {
+    const i = this.read(), s = i.platforms.find((r) => r.nanoid === t);
+    s && (Object.assign(s, e), this.write(i));
   }
   /** 快捷启用 */
-  enablePlatform(nanoid2) {
-    this.updatePlatform(nanoid2, { enabled: true });
+  enablePlatform(t) {
+    this.updatePlatform(t, { enabled: !0 });
   }
   /** 快捷禁用 */
-  disablePlatform(nanoid2) {
-    this.updatePlatform(nanoid2, { enabled: false });
+  disablePlatform(t) {
+    this.updatePlatform(t, { enabled: !1 });
   }
-  removePlatform(nanoid2) {
-    const cfg = this.read();
-    cfg.platforms = cfg.platforms.filter((p) => p.nanoid !== nanoid2);
-    this.write(cfg);
+  removePlatform(t) {
+    const e = this.read();
+    e.platforms = e.platforms.filter((i) => i.nanoid !== t), this.write(e);
   }
 }
-var myHeaders = new Headers();
-myHeaders.append("accept", "application/json");
-myHeaders.append("Content-Type", "application/json");
-function MinecraftTunnelName() {
-  return "mc-" + nanoid(8).toString();
+var $e = new Headers();
+$e.append("accept", "application/json");
+$e.append("Content-Type", "application/json");
+function xn() {
+  return "mc-" + Er(8).toString();
 }
-class NatFrp {
-  static async userInfo(token) {
-    const res = await fetch(`${this.api_url}/user/info?token=${token}`, {
+class G {
+  static async userInfo(t) {
+    const e = await fetch(`${this.api_url}/user/info?token=${t}`, {
       method: "GET"
     });
-    if (!res.ok) {
-      return null;
-    }
-    return await res.json();
+    return e.ok ? await e.json() : null;
   }
   static async clients() {
-    const res = await fetch(`${this.api_url}/system/clients`, {
+    return await (await fetch(`${this.api_url}/system/clients`, {
       method: "GET"
-    });
-    return await res.json();
+    })).json();
   }
-  static async tunnelInfo(token) {
-    const res = await fetch(`${this.api_url}/tunnels?token=${token}`, {
+  static async tunnelInfo(t) {
+    const e = await fetch(`${this.api_url}/tunnels?token=${t}`, {
       method: "GET"
     });
-    if (!res.ok) {
-      return null;
-    }
-    return await res.json();
+    return e.ok ? await e.json() : null;
   }
-  static async nodes(token) {
-    const res = await fetch(`${this.api_url}/nodes?token=${token}`, {
+  static async nodes(t) {
+    const e = await fetch(`${this.api_url}/nodes?token=${t}`, {
       method: "GET"
     });
-    if (!res.ok) {
-      return null;
-    }
-    return await res.json();
+    return e.ok ? await e.json() : null;
   }
-  static async nodeStats(token) {
-    const res = await fetch(`${this.api_url}/node/stats?token=${token}`, {
+  static async nodeStats(t) {
+    const e = await fetch(`${this.api_url}/node/stats?token=${t}`, {
       method: "GET"
     });
-    if (!res.ok) {
-      return null;
-    }
-    const data = await res.json();
-    return data.nodes;
+    return e.ok ? (await e.json()).nodes : null;
   }
   // 合并节点信息和状态
-  static async getMergedNodes(token) {
-    const nodesData = await this.nodes(token);
-    const statsData = await this.nodeStats(token);
-    if (!nodesData || !statsData) return null;
-    const merged = statsData.map((stat) => {
-      const nodeInfo = nodesData[stat.id];
-      if (!nodeInfo) {
-        return stat;
-      }
-      return { ...nodeInfo, ...stat };
+  static async getMergedNodes(t) {
+    const e = await this.nodes(t), i = await this.nodeStats(t);
+    return !e || !i ? null : i.map((r) => {
+      const o = e[r.id];
+      return o ? { ...o, ...r } : r;
     });
-    return merged;
   }
-  static async tunnelCreate(token, node, local_port) {
-    const tunnel_name = MinecraftTunnelName();
-    const raw = {
-      "name": tunnel_name,
-      "type": "tcp",
-      "node": node,
-      "local_ip": "127.0.0.1",
-      "local_port": local_port
-    };
-    const res = await fetch(`${this.api_url}/tunnels?token=${token}`, {
+  static async tunnelCreate(t, e, i) {
+    const r = {
+      name: xn(),
+      type: "tcp",
+      node: e,
+      local_ip: "127.0.0.1",
+      local_port: i
+    }, o = await fetch(`${this.api_url}/tunnels?token=${t}`, {
       method: "POST",
-      headers: myHeaders,
-      body: JSON.stringify(raw)
+      headers: $e,
+      body: JSON.stringify(r)
     });
-    if (!res.ok) {
-      const err = await res.json();
-      return err;
-    }
-    const data = await res.json();
-    return data;
+    return o.ok ? await o.json() : await o.json();
   }
-  static async tunnelEdit(token, tunnel_id, local_port) {
-    const raw = {
-      "id": Number(tunnel_id),
-      "local_port": local_port
+  static async tunnelEdit(t, e, i) {
+    const s = {
+      id: Number(e),
+      local_port: i
     };
-    const res = await fetch(`${this.api_url}/tunnel/edit?token=${token}`, {
+    return (await fetch(`${this.api_url}/tunnel/edit?token=${t}`, {
       method: "POST",
-      headers: myHeaders,
-      body: JSON.stringify(raw)
-    });
-    if (!res.ok) {
-      return null;
-    }
-    return true;
+      headers: $e,
+      body: JSON.stringify(s)
+    })).ok ? !0 : null;
   }
 }
-__publicField(NatFrp, "api_url", "https://api.natfrp.com/v4");
-const execAsync = promisify(exec);
-class MinecraftDetector {
-  static async runCMD(cmd) {
+y(G, "api_url", "https://api.natfrp.com/v4");
+const Ot = hn(dn);
+class xe {
+  static async runCMD(t) {
     try {
-      const { stdout } = await execAsync(`chcp 65001 > nul && ${cmd}`, {
-        windowsHide: true,
-        maxBuffer: 1024 * 1024 * 50
+      const { stdout: e } = await Ot(`chcp 65001 > nul && ${t}`, {
+        windowsHide: !0,
+        maxBuffer: 52428800
       });
-      return stdout;
-    } catch (err) {
-      return "";
-    }
-  }
-  static async runPowerShell(script) {
-    const pwshPaths = [
-      `${process.env.ProgramFiles}\\PowerShell\\7\\pwsh.exe`,
-      `${process.env["ProgramFiles(x86)"]}\\PowerShell\\7\\pwsh.exe`,
-      "pwsh"
-    ];
-    const exe = pwshPaths.find((p) => fs.existsSync(p)) || "powershell";
-    const utf8Script = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${script}`;
-    try {
-      const { stdout } = await execAsync(`"${exe}" -NoProfile -Command "${utf8Script.replace(/"/g, '\\"')}"`, {
-        windowsHide: true,
-        encoding: "utf8",
-        // 确保 Node.js 用 UTF8 解码
-        maxBuffer: 1024 * 1024 * 50
-      });
-      return stdout;
+      return e;
     } catch {
       return "";
     }
   }
-  static parseModLoader(cmd = "") {
-    var _a;
-    const neoMatch = cmd.match(/--fml\.neoForgeVersion\s+([^\s]+)/i) || cmd.match(/neoforge-([\d\.]+)/i);
-    if (neoMatch || cmd.includes("net.neoforged")) {
-      return { loader: "NeoForge", loaderVersion: (_a = neoMatch == null ? void 0 : neoMatch[1]) == null ? void 0 : _a.replace(/[\s.]+$/, "") };
+  static async runPowerShell(t) {
+    const i = [
+      `${process.env.ProgramFiles}\\PowerShell\\7\\pwsh.exe`,
+      `${process.env["ProgramFiles(x86)"]}\\PowerShell\\7\\pwsh.exe`,
+      "pwsh"
+    ].find((r) => B.existsSync(r)) || "powershell", s = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${t}`;
+    try {
+      const { stdout: r } = await Ot(`"${i}" -NoProfile -Command "${s.replace(/"/g, '\\"')}"`, {
+        windowsHide: !0,
+        encoding: "utf8",
+        // 确保 Node.js 用 UTF8 解码
+        maxBuffer: 52428800
+      });
+      return r;
+    } catch {
+      return "";
     }
-    if (cmd.includes("net.fabricmc.loader")) {
-      const m = cmd.match(/fabric-loader-([\d\.]+)/i);
-      return { loader: "Fabric", loaderVersion: m == null ? void 0 : m[1] };
+  }
+  static parseModLoader(t = "") {
+    var i;
+    const e = t.match(/--fml\.neoForgeVersion\s+([^\s]+)/i) || t.match(/neoforge-([\d\.]+)/i);
+    if (e || t.includes("net.neoforged"))
+      return { loader: "NeoForge", loaderVersion: (i = e == null ? void 0 : e[1]) == null ? void 0 : i.replace(/[\s.]+$/, "") };
+    if (t.includes("net.fabricmc.loader")) {
+      const s = t.match(/fabric-loader-([\d\.]+)/i);
+      return { loader: "Fabric", loaderVersion: s == null ? void 0 : s[1] };
     }
-    if (cmd.includes("org.quiltmc.loader")) {
-      const m = cmd.match(/quilt-loader-([\d\.]+)/i);
-      return { loader: "Quilt", loaderVersion: m == null ? void 0 : m[1] };
+    if (t.includes("org.quiltmc.loader")) {
+      const s = t.match(/quilt-loader-([\d\.]+)/i);
+      return { loader: "Quilt", loaderVersion: s == null ? void 0 : s[1] };
     }
-    if (cmd.includes("fml.loading.FMLClientLaunchProvider") || /FMLClientTweaker/i.test(cmd)) {
-      const m = cmd.match(/forge-(\d+\.\d+\.\d+)/i);
-      return { loader: "Forge", loaderVersion: m == null ? void 0 : m[1] };
+    if (t.includes("fml.loading.FMLClientLaunchProvider") || /FMLClientTweaker/i.test(t)) {
+      const s = t.match(/forge-(\d+\.\d+\.\d+)/i);
+      return { loader: "Forge", loaderVersion: s == null ? void 0 : s[1] };
     }
     return { loader: "Vanilla" };
   }
-  static parseLoginInfo(cmd) {
-    const username = this.getArgValue(cmd, "--username");
-    const uuid = this.getArgValue(cmd, "--uuid");
-    const accessToken = this.getArgValue(cmd, "--accessToken");
-    const versionType = this.getArgValue(cmd, "--versionType");
-    let loginType = "offline";
-    let provider = void 0;
-    const injectorMatch = cmd.match(/authlib-injector[^\s=]*=([^"\s]+)/);
-    if (accessToken) {
-      if (this.isMojangToken(accessToken)) {
-        loginType = "msa";
-      } else if (injectorMatch) {
-        loginType = "custom";
+  static parseLoginInfo(t) {
+    const e = this.getArgValue(t, "--username"), i = this.getArgValue(t, "--uuid"), s = this.getArgValue(t, "--accessToken"), r = this.getArgValue(t, "--versionType");
+    let o = "offline", a;
+    const c = t.match(/authlib-injector[^\s=]*=([^"\s]+)/);
+    if (s)
+      if (this.isMojangToken(s))
+        o = "msa";
+      else if (c) {
+        o = "custom";
         try {
-          const url = new URL(injectorMatch[1]);
-          provider = url.hostname;
+          a = new URL(c[1]).hostname;
         } catch {
-          provider = injectorMatch[1];
+          a = c[1];
         }
-      } else {
-        loginType = "offline";
-      }
-    } else {
-      loginType = "other";
-    }
-    return { username, uuid, loginType, provider, versionType };
+      } else
+        o = "offline";
+    else
+      o = "other";
+    return { username: e, uuid: i, loginType: o, provider: a, versionType: r };
   }
-  static parseVersion(cmd) {
-    var _a, _b;
-    return ((_a = cmd.match(/--version\s+([\d\.\-\w]+)/)) == null ? void 0 : _a[1]) || ((_b = cmd.match(/--assetIndex\s+([^\s]+)/)) == null ? void 0 : _b[1]);
+  static parseVersion(t) {
+    var e, i;
+    return ((e = t.match(/--version\s+([\d\.\-\w]+)/)) == null ? void 0 : e[1]) || ((i = t.match(/--assetIndex\s+([^\s]+)/)) == null ? void 0 : i[1]);
   }
   /**
   * 提取参数值并移除首尾引号
   * @param cmd 完整的命令行字符串
   * @param argName 参数名称，如 '--versionType'
   */
-  static getArgValue(cmd, argName) {
-    const regex = new RegExp(`${argName}\\s+(.*?)(?=\\s+--|$)`);
-    const match = cmd.match(regex);
-    if (!match) return void 0;
-    let value = match[1].trim();
-    return value.replace(/^["']|["']$/g, "");
+  static getArgValue(t, e) {
+    const i = new RegExp(`${e}\\s+(.*?)(?=\\s+--|$)`), s = t.match(i);
+    return s ? s[1].trim().replace(/^["']|["']$/g, "") : void 0;
   }
   /**
    * 核心处理逻辑：去重与特征识别
    */
-  static processRawResults(winProcesses, tcpConnections) {
-    var _a;
-    const instanceMap = /* @__PURE__ */ new Map();
-    for (const proc of winProcesses) {
-      const cmd = proc.CommandLine || "";
-      if (!cmd) continue;
-      const isMC = this.MC_MAIN_CLASSES.some((cls) => cmd.includes(cls)) || /minecraft/i.test(cmd);
-      if (!isMC) continue;
-      const login = this.parseLoginInfo(cmd);
-      const version = this.parseVersion(cmd);
-      const loader = this.parseModLoader(cmd);
-      const gameDirMatch = cmd.match(/--gameDir\s+"?([^"\s]+)"?/);
-      const gameDir = gameDirMatch ? gameDirMatch[1] : "default_dir";
-      const fingerprint = `${login.uuid || login.username}|${gameDir}|${version}`;
-      const validLanPorts = Array.from(new Set(
-        tcpConnections.filter(
-          (t) => t.OwningProcess === proc.ProcessId && t.LocalPort >= 1024 && (t.LocalAddress === "0.0.0.0" || t.LocalAddress === "::" || t.LocalAddress === "*")
-        ).map((t) => t.LocalPort)
-      ));
-      const currentInfo = {
-        pid: proc.ProcessId,
-        java: proc.Name,
-        version,
-        versionType: login.versionType,
-        loader: loader.loader,
-        loaderVersion: (_a = loader.loaderVersion) == null ? void 0 : _a.replace(/[\s._-]+$/, ""),
-        username: login.username,
-        uuid: login.uuid,
-        loginType: login.loginType,
-        provider: login.provider,
+  static processRawResults(t, e) {
+    var s;
+    const i = /* @__PURE__ */ new Map();
+    for (const r of t) {
+      const o = r.CommandLine || "";
+      if (!o || !(this.MC_MAIN_CLASSES.some((g) => o.includes(g)) || /minecraft/i.test(o))) continue;
+      const c = this.parseLoginInfo(o), l = this.parseVersion(o), u = this.parseModLoader(o), d = o.match(/--gameDir\s+"?([^"\s]+)"?/), f = d ? d[1] : "default_dir", h = `${c.uuid || c.username}|${f}|${l}`, m = Array.from(new Set(
+        e.filter(
+          (g) => g.OwningProcess === r.ProcessId && g.LocalPort >= 1024 && (g.LocalAddress === "0.0.0.0" || g.LocalAddress === "::" || g.LocalAddress === "*")
+        ).map((g) => g.LocalPort)
+      )), v = {
+        pid: r.ProcessId,
+        java: r.Name,
+        version: l,
+        versionType: c.versionType,
+        loader: u.loader,
+        loaderVersion: (s = u.loaderVersion) == null ? void 0 : s.replace(/[\s._-]+$/, ""),
+        username: c.username,
+        uuid: c.uuid,
+        loginType: c.loginType,
+        provider: c.provider,
         // 将 provider 传入
-        lanPorts: validLanPorts,
-        isLan: validLanPorts.length > 0
+        lanPorts: m,
+        isLan: m.length > 0
       };
-      if (instanceMap.has(fingerprint)) {
-        const existing = instanceMap.get(fingerprint);
-        if (currentInfo.lanPorts.length > 0 && existing.lanPorts.length === 0) {
-          instanceMap.set(fingerprint, currentInfo);
-        }
-      } else {
-        instanceMap.set(fingerprint, currentInfo);
-      }
+      if (i.has(h)) {
+        const g = i.get(h);
+        v.lanPorts.length > 0 && g.lanPorts.length === 0 && i.set(h, v);
+      } else
+        i.set(h, v);
     }
-    return Array.from(instanceMap.values());
+    return Array.from(i.values());
   }
   /**
    * 主检测方法
    */
   static async detectAll() {
-    const procScript = `Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java' } | Select-Object ProcessId, Name, CommandLine | ConvertTo-Json`;
-    const portScript = `Get-NetTCPConnection -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess | ConvertTo-Json`;
+    const t = "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java' } | Select-Object ProcessId, Name, CommandLine | ConvertTo-Json", e = "Get-NetTCPConnection -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess | ConvertTo-Json";
     try {
-      const [procRaw, portRaw] = await Promise.all([
-        this.runPowerShell(procScript),
-        this.runPowerShell(portScript)
-      ]);
-      const parseJson = (raw) => {
-        if (!raw.trim()) return [];
+      const [i, s] = await Promise.all([
+        this.runPowerShell(t),
+        this.runPowerShell(e)
+      ]), r = (c) => {
+        if (!c.trim()) return [];
         try {
-          const parsed = JSON.parse(raw.replace(/^\uFEFF/, ""));
-          return Array.isArray(parsed) ? parsed : [parsed];
+          const l = JSON.parse(c.replace(/^\uFEFF/, ""));
+          return Array.isArray(l) ? l : [l];
         } catch {
           return [];
         }
-      };
-      const procList = parseJson(procRaw);
-      const tcpList = parseJson(portRaw);
-      if (procList.length === 0) throw new Error("No processes");
-      return this.processRawResults(procList, tcpList);
+      }, o = r(i), a = r(s);
+      if (o.length === 0) throw new Error("No processes");
+      return this.processRawResults(o, a);
     } catch {
       return this.detectAllByCMD();
     }
@@ -414,36 +330,26 @@ class MinecraftDetector {
    * WMIC 回退方案
    */
   static async detectAllByCMD() {
-    const procRaw = await this.runCMD(`wmic process where "name like 'java%'" get ProcessId,Name,CommandLine /FORMAT:CSV`);
-    const procList = [];
-    const lines = procRaw.split(/\r?\n/).filter((l) => l.trim());
-    for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split(",");
-      if (parts.length < 4) continue;
-      const pid = parseInt(parts[parts.length - 2], 10);
-      const name = parts[parts.length - 3];
-      const cmd = parts.slice(1, parts.length - 3).join(",");
-      if (!isNaN(pid)) {
-        procList.push({ ProcessId: pid, Name: name, CommandLine: cmd });
-      }
+    const t = await this.runCMD(`wmic process where "name like 'java%'" get ProcessId,Name,CommandLine /FORMAT:CSV`), e = [], i = t.split(/\r?\n/).filter((a) => a.trim());
+    for (let a = 1; a < i.length; a++) {
+      const c = i[a].split(",");
+      if (c.length < 4) continue;
+      const l = parseInt(c[c.length - 2], 10), u = c[c.length - 3], d = c.slice(1, c.length - 3).join(",");
+      isNaN(l) || e.push({ ProcessId: l, Name: u, CommandLine: d });
     }
-    const portRaw = await this.runCMD(`netstat -ano -p tcp`);
-    const tcpList = [];
-    const portLines = portRaw.split(/\r?\n/);
-    for (const line of portLines) {
-      const match = line.trim().match(/^TCP\s+(0\.0\.0\.0|\[::\]):(\d+)\s+\S+\s+LISTENING\s+(\d+)$/i);
-      if (match && match[1] && match[2]) {
-        tcpList.push({
-          LocalAddress: match[1],
-          LocalPort: parseInt(match[2], 10),
-          OwningProcess: parseInt(match[3], 10)
-        });
-      }
+    const s = await this.runCMD("netstat -ano -p tcp"), r = [], o = s.split(/\r?\n/);
+    for (const a of o) {
+      const c = a.trim().match(/^TCP\s+(0\.0\.0\.0|\[::\]):(\d+)\s+\S+\s+LISTENING\s+(\d+)$/i);
+      c && c[1] && c[2] && r.push({
+        LocalAddress: c[1],
+        LocalPort: parseInt(c[2], 10),
+        OwningProcess: parseInt(c[3], 10)
+      });
     }
-    return this.processRawResults(procList, tcpList);
+    return this.processRawResults(e, r);
   }
 }
-__publicField(MinecraftDetector, "MC_MAIN_CLASSES", [
+y(xe, "MC_MAIN_CLASSES", [
   "net.minecraft.client.main.Main",
   "net.minecraft.client.Minecraft",
   "cpw.mods.fml.client.FMLClientTweaker",
@@ -456,2433 +362,3730 @@ __publicField(MinecraftDetector, "MC_MAIN_CLASSES", [
   "net.minecraftforge.userdev.LaunchTesting",
   "net.minecraft.launchwrapper.Launch",
   "org.multimc.Entry"
-]);
-__publicField(MinecraftDetector, "MINECRAFT_DIR", path.join(os.homedir(), ".minecraft"));
-/**
+]), y(xe, "MINECRAFT_DIR", F.join(le.homedir(), ".minecraft")), /**
  * 判断是否为 Minecraft 官方 (Mojang/Microsoft) 的 JWT Token
  */
-__publicField(MinecraftDetector, "isMojangToken", (token) => {
+y(xe, "isMojangToken", (t) => {
   try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return false;
-    const payloadJson = typeof window !== "undefined" ? atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")) : Buffer.from(parts[1], "base64").toString();
-    const payload = JSON.parse(payloadJson);
-    const hasXuid = typeof payload.xuid === "string";
-    const hasPfd = Array.isArray(payload.pfd) && payload.pfd.length > 0;
-    const isAuthIss = payload.iss === "authentication";
-    const hasPlatform = "platform" in payload;
-    return hasXuid && hasPfd && (isAuthIss || hasPlatform);
-  } catch (e) {
-    return false;
+    const e = t.split(".");
+    if (e.length !== 3) return !1;
+    const i = typeof window < "u" ? atob(e[1].replace(/-/g, "+").replace(/_/g, "/")) : Buffer.from(e[1], "base64").toString(), s = JSON.parse(i), r = typeof s.xuid == "string", o = Array.isArray(s.pfd) && s.pfd.length > 0, a = s.iss === "authentication", c = "platform" in s;
+    return r && o && (a || c);
+  } catch {
+    return !1;
   }
 });
-async function getMojangProfile(uuid) {
+async function Sn(n) {
   try {
-    const res = await fetch(
-      `https://sessionserver.mojang.com/session/minecraft/profile/${uuid}?unsigned=true`,
+    const t = await fetch(
+      `https://sessionserver.mojang.com/session/minecraft/profile/${n}?unsigned=true`,
       {
         method: "GET",
         headers: {
-          "Accept": "application/json"
+          Accept: "application/json"
         }
       }
-    );
-    const data = await res.json();
-    if (!res.ok || data.errorMessage) {
-      return {
-        ok: false,
-        errorMessage: data.errorMessage || `HTTP ${res.status}`
-      };
-    }
-    return {
-      ok: true,
-      data
+    ), e = await t.json();
+    return !t.ok || e.errorMessage ? {
+      ok: !1,
+      errorMessage: e.errorMessage || `HTTP ${t.status}`
+    } : {
+      ok: !0,
+      data: e
     };
-  } catch (err) {
+  } catch (t) {
     return {
-      ok: false,
-      errorMessage: (err == null ? void 0 : err.message) || "Network error"
+      ok: !1,
+      errorMessage: (t == null ? void 0 : t.message) || "Network error"
     };
   }
 }
-function getLatestWindowsSakuraFrp(apiData) {
-  const archPriority = [
+var p = typeof globalThis < "u" ? globalThis : typeof window < "u" ? window : typeof global < "u" ? global : typeof self < "u" ? self : {};
+function In(n) {
+  return n && n.__esModule && Object.prototype.hasOwnProperty.call(n, "default") ? n.default : n;
+}
+var Se = { exports: {} }, We = { exports: {} }, Ct;
+function _r() {
+  return Ct || (Ct = 1, function(n) {
+    let t = {};
+    try {
+      t = require("electron");
+    } catch {
+    }
+    t.ipcRenderer && e(t), n.exports = e;
+    function e({ contextBridge: i, ipcRenderer: s }) {
+      if (!s)
+        return;
+      s.on("__ELECTRON_LOG_IPC__", (o, a) => {
+        window.postMessage({ cmd: "message", ...a });
+      }), s.invoke("__ELECTRON_LOG__", { cmd: "getOptions" }).catch((o) => console.error(new Error(
+        `electron-log isn't initialized in the main process. Please call log.initialize() before. ${o.message}`
+      )));
+      const r = {
+        sendToMain(o) {
+          try {
+            s.send("__ELECTRON_LOG__", o);
+          } catch (a) {
+            console.error("electronLog.sendToMain ", a, "data:", o), s.send("__ELECTRON_LOG__", {
+              cmd: "errorHandler",
+              error: { message: a == null ? void 0 : a.message, stack: a == null ? void 0 : a.stack },
+              errorName: "sendToMain"
+            });
+          }
+        },
+        log(...o) {
+          r.sendToMain({ data: o, level: "info" });
+        }
+      };
+      for (const o of ["error", "warn", "info", "verbose", "debug", "silly"])
+        r[o] = (...a) => r.sendToMain({
+          data: a,
+          level: o
+        });
+      if (i && process.contextIsolated)
+        try {
+          i.exposeInMainWorld("__electronLog", r);
+        } catch {
+        }
+      typeof window == "object" ? window.__electronLog = r : __electronLog = r;
+    }
+  }(We)), We.exports;
+}
+var Je = { exports: {} }, Ge, jt;
+function $n() {
+  if (jt) return Ge;
+  jt = 1, Ge = n;
+  function n(t) {
+    return Object.defineProperties(e, {
+      defaultLabel: { value: "", writable: !0 },
+      labelPadding: { value: !0, writable: !0 },
+      maxLabelLength: { value: 0, writable: !0 },
+      labelLength: {
+        get() {
+          switch (typeof e.labelPadding) {
+            case "boolean":
+              return e.labelPadding ? e.maxLabelLength : 0;
+            case "number":
+              return e.labelPadding;
+            default:
+              return 0;
+          }
+        }
+      }
+    });
+    function e(i) {
+      e.maxLabelLength = Math.max(e.maxLabelLength, i.length);
+      const s = {};
+      for (const r of t.levels)
+        s[r] = (...o) => t.logData(o, { level: r, scope: i });
+      return s.log = s.info, s;
+    }
+  }
+  return Ge;
+}
+var Ke, Nt;
+function Bn() {
+  if (Nt) return Ke;
+  Nt = 1;
+  class n {
+    constructor({ processMessage: e }) {
+      this.processMessage = e, this.buffer = [], this.enabled = !1, this.begin = this.begin.bind(this), this.commit = this.commit.bind(this), this.reject = this.reject.bind(this);
+    }
+    addMessage(e) {
+      this.buffer.push(e);
+    }
+    begin() {
+      this.enabled = [];
+    }
+    commit() {
+      this.enabled = !1, this.buffer.forEach((e) => this.processMessage(e)), this.buffer = [];
+    }
+    reject() {
+      this.enabled = !1, this.buffer = [];
+    }
+  }
+  return Ke = n, Ke;
+}
+var Ye, Mt;
+function xr() {
+  if (Mt) return Ye;
+  Mt = 1;
+  const n = $n(), t = Bn(), i = class i {
+    constructor({
+      allowUnknownLevel: r = !1,
+      dependencies: o = {},
+      errorHandler: a,
+      eventLogger: c,
+      initializeFn: l,
+      isDev: u = !1,
+      levels: d = ["error", "warn", "info", "verbose", "debug", "silly"],
+      logId: f,
+      transportFactories: h = {},
+      variables: m
+    } = {}) {
+      y(this, "dependencies", {});
+      y(this, "errorHandler", null);
+      y(this, "eventLogger", null);
+      y(this, "functions", {});
+      y(this, "hooks", []);
+      y(this, "isDev", !1);
+      y(this, "levels", null);
+      y(this, "logId", null);
+      y(this, "scope", null);
+      y(this, "transports", {});
+      y(this, "variables", {});
+      this.addLevel = this.addLevel.bind(this), this.create = this.create.bind(this), this.initialize = this.initialize.bind(this), this.logData = this.logData.bind(this), this.processMessage = this.processMessage.bind(this), this.allowUnknownLevel = r, this.buffering = new t(this), this.dependencies = o, this.initializeFn = l, this.isDev = u, this.levels = d, this.logId = f, this.scope = n(this), this.transportFactories = h, this.variables = m || {};
+      for (const v of this.levels)
+        this.addLevel(v, !1);
+      this.log = this.info, this.functions.log = this.log, this.errorHandler = a, a == null || a.setOptions({ ...o, logFn: this.error }), this.eventLogger = c, c == null || c.setOptions({ ...o, logger: this });
+      for (const [v, g] of Object.entries(h))
+        this.transports[v] = g(this, o);
+      i.instances[f] = this;
+    }
+    static getInstance({ logId: r }) {
+      return this.instances[r] || this.instances.default;
+    }
+    addLevel(r, o = this.levels.length) {
+      o !== !1 && this.levels.splice(o, 0, r), this[r] = (...a) => this.logData(a, { level: r }), this.functions[r] = this[r];
+    }
+    catchErrors(r) {
+      return this.processMessage(
+        {
+          data: ["log.catchErrors is deprecated. Use log.errorHandler instead"],
+          level: "warn"
+        },
+        { transports: ["console"] }
+      ), this.errorHandler.startCatching(r);
+    }
+    create(r) {
+      return typeof r == "string" && (r = { logId: r }), new i({
+        dependencies: this.dependencies,
+        errorHandler: this.errorHandler,
+        initializeFn: this.initializeFn,
+        isDev: this.isDev,
+        transportFactories: this.transportFactories,
+        variables: { ...this.variables },
+        ...r
+      });
+    }
+    compareLevels(r, o, a = this.levels) {
+      const c = a.indexOf(r), l = a.indexOf(o);
+      return l === -1 || c === -1 ? !0 : l <= c;
+    }
+    initialize(r = {}) {
+      this.initializeFn({ logger: this, ...this.dependencies, ...r });
+    }
+    logData(r, o = {}) {
+      this.buffering.enabled ? this.buffering.addMessage({ data: r, date: /* @__PURE__ */ new Date(), ...o }) : this.processMessage({ data: r, ...o });
+    }
+    processMessage(r, { transports: o = this.transports } = {}) {
+      if (r.cmd === "errorHandler") {
+        this.errorHandler.handle(r.error, {
+          errorName: r.errorName,
+          processType: "renderer",
+          showDialog: !!r.showDialog
+        });
+        return;
+      }
+      let a = r.level;
+      this.allowUnknownLevel || (a = this.levels.includes(r.level) ? r.level : "info");
+      const c = {
+        date: /* @__PURE__ */ new Date(),
+        logId: this.logId,
+        ...r,
+        level: a,
+        variables: {
+          ...this.variables,
+          ...r.variables
+        }
+      };
+      for (const [l, u] of this.transportEntries(o))
+        if (!(typeof u != "function" || u.level === !1) && this.compareLevels(u.level, r.level))
+          try {
+            const d = this.hooks.reduce((f, h) => f && h(f, u, l), c);
+            d && u({ ...d, data: [...d.data] });
+          } catch (d) {
+            this.processInternalErrorFn(d);
+          }
+    }
+    processInternalErrorFn(r) {
+    }
+    transportEntries(r = this.transports) {
+      return (Array.isArray(r) ? r : Object.entries(r)).map((a) => {
+        switch (typeof a) {
+          case "string":
+            return this.transports[a] ? [a, this.transports[a]] : null;
+          case "function":
+            return [a.name, a];
+          default:
+            return Array.isArray(a) ? a : null;
+        }
+      }).filter(Boolean);
+    }
+  };
+  y(i, "instances", {});
+  let e = i;
+  return Ye = e, Ye;
+}
+var Qe, Vt;
+function Ln() {
+  if (Vt) return Qe;
+  Vt = 1;
+  const n = console.error;
+  class t {
+    constructor({ logFn: i = null } = {}) {
+      y(this, "logFn", null);
+      y(this, "onError", null);
+      y(this, "showDialog", !1);
+      y(this, "preventDefault", !0);
+      this.handleError = this.handleError.bind(this), this.handleRejection = this.handleRejection.bind(this), this.startCatching = this.startCatching.bind(this), this.logFn = i;
+    }
+    handle(i, {
+      logFn: s = this.logFn,
+      errorName: r = "",
+      onError: o = this.onError,
+      showDialog: a = this.showDialog
+    } = {}) {
+      try {
+        (o == null ? void 0 : o({ error: i, errorName: r, processType: "renderer" })) !== !1 && s({ error: i, errorName: r, showDialog: a });
+      } catch {
+        n(i);
+      }
+    }
+    setOptions({ logFn: i, onError: s, preventDefault: r, showDialog: o }) {
+      typeof i == "function" && (this.logFn = i), typeof s == "function" && (this.onError = s), typeof r == "boolean" && (this.preventDefault = r), typeof o == "boolean" && (this.showDialog = o);
+    }
+    startCatching({ onError: i, showDialog: s } = {}) {
+      this.isActive || (this.isActive = !0, this.setOptions({ onError: i, showDialog: s }), window.addEventListener("error", (r) => {
+        var o;
+        this.preventDefault && ((o = r.preventDefault) == null || o.call(r)), this.handleError(r.error || r);
+      }), window.addEventListener("unhandledrejection", (r) => {
+        var o;
+        this.preventDefault && ((o = r.preventDefault) == null || o.call(r)), this.handleRejection(r.reason || r);
+      }));
+    }
+    handleError(i) {
+      this.handle(i, { errorName: "Unhandled" });
+    }
+    handleRejection(i) {
+      const s = i instanceof Error ? i : new Error(JSON.stringify(i));
+      this.handle(s, { errorName: "Unhandled rejection" });
+    }
+  }
+  return Qe = t, Qe;
+}
+var Ze, Ut;
+function te() {
+  if (Ut) return Ze;
+  Ut = 1, Ze = { transform: n };
+  function n({
+    logger: t,
+    message: e,
+    transport: i,
+    initialData: s = (e == null ? void 0 : e.data) || [],
+    transforms: r = i == null ? void 0 : i.transforms
+  }) {
+    return r.reduce((o, a) => typeof a == "function" ? a({ data: o, logger: t, message: e, transport: i }) : o, s);
+  }
+  return Ze;
+}
+var Xe, qt;
+function Dn() {
+  if (qt) return Xe;
+  qt = 1;
+  const { transform: n } = te();
+  Xe = e;
+  const t = {
+    error: console.error,
+    warn: console.warn,
+    info: console.info,
+    verbose: console.info,
+    debug: console.debug,
+    silly: console.debug,
+    log: console.log
+  };
+  function e(s) {
+    return Object.assign(r, {
+      format: "{h}:{i}:{s}.{ms}{scope} › {text}",
+      transforms: [i],
+      writeFn({ message: { level: o, data: a } }) {
+        const c = t[o] || t.info;
+        setTimeout(() => c(...a));
+      }
+    });
+    function r(o) {
+      r.writeFn({
+        message: { ...o, data: n({ logger: s, message: o, transport: r }) }
+      });
+    }
+  }
+  function i({
+    data: s = [],
+    logger: r = {},
+    message: o = {},
+    transport: a = {}
+  }) {
+    if (typeof a.format == "function")
+      return a.format({
+        data: s,
+        level: (o == null ? void 0 : o.level) || "info",
+        logger: r,
+        message: o,
+        transport: a
+      });
+    if (typeof a.format != "string")
+      return s;
+    s.unshift(a.format), typeof s[1] == "string" && s[1].match(/%[1cdfiOos]/) && (s = [`${s[0]}${s[1]}`, ...s.slice(2)]);
+    const c = o.date || /* @__PURE__ */ new Date();
+    return s[0] = s[0].replace(/\{(\w+)}/g, (l, u) => {
+      var d, f;
+      switch (u) {
+        case "level":
+          return o.level;
+        case "logId":
+          return o.logId;
+        case "scope": {
+          const h = o.scope || ((d = r.scope) == null ? void 0 : d.defaultLabel);
+          return h ? ` (${h})` : "";
+        }
+        case "text":
+          return "";
+        case "y":
+          return c.getFullYear().toString(10);
+        case "m":
+          return (c.getMonth() + 1).toString(10).padStart(2, "0");
+        case "d":
+          return c.getDate().toString(10).padStart(2, "0");
+        case "h":
+          return c.getHours().toString(10).padStart(2, "0");
+        case "i":
+          return c.getMinutes().toString(10).padStart(2, "0");
+        case "s":
+          return c.getSeconds().toString(10).padStart(2, "0");
+        case "ms":
+          return c.getMilliseconds().toString(10).padStart(3, "0");
+        case "iso":
+          return c.toISOString();
+        default:
+          return ((f = o.variables) == null ? void 0 : f[u]) || l;
+      }
+    }).trim(), s;
+  }
+  return Xe;
+}
+var et, zt;
+function Pn() {
+  if (zt) return et;
+  zt = 1;
+  const { transform: n } = te();
+  et = e;
+  const t = /* @__PURE__ */ new Set([Promise, WeakMap, WeakSet]);
+  function e(r) {
+    return Object.assign(o, {
+      depth: 5,
+      transforms: [s]
+    });
+    function o(a) {
+      if (!window.__electronLog) {
+        r.processMessage(
+          {
+            data: ["electron-log: logger isn't initialized in the main process"],
+            level: "error"
+          },
+          { transports: ["console"] }
+        );
+        return;
+      }
+      try {
+        const c = n({
+          initialData: a,
+          logger: r,
+          message: a,
+          transport: o
+        });
+        __electronLog.sendToMain(c);
+      } catch (c) {
+        r.transports.console({
+          data: ["electronLog.transports.ipc", c, "data:", a.data],
+          level: "error"
+        });
+      }
+    }
+  }
+  function i(r) {
+    return Object(r) !== r;
+  }
+  function s({
+    data: r,
+    depth: o,
+    seen: a = /* @__PURE__ */ new WeakSet(),
+    transport: c = {}
+  } = {}) {
+    const l = o || c.depth || 5;
+    return a.has(r) ? "[Circular]" : l < 1 ? i(r) ? r : Array.isArray(r) ? "[Array]" : `[${typeof r}]` : ["function", "symbol"].includes(typeof r) ? r.toString() : i(r) ? r : t.has(r.constructor) ? `[${r.constructor.name}]` : Array.isArray(r) ? r.map((u) => s({
+      data: u,
+      depth: l - 1,
+      seen: a
+    })) : r instanceof Date ? r.toISOString() : r instanceof Error ? r.stack : r instanceof Map ? new Map(
+      Array.from(r).map(([u, d]) => [
+        s({ data: u, depth: l - 1, seen: a }),
+        s({ data: d, depth: l - 1, seen: a })
+      ])
+    ) : r instanceof Set ? new Set(
+      Array.from(r).map(
+        (u) => s({ data: u, depth: l - 1, seen: a })
+      )
+    ) : (a.add(r), Object.fromEntries(
+      Object.entries(r).map(
+        ([u, d]) => [
+          u,
+          s({ data: d, depth: l - 1, seen: a })
+        ]
+      )
+    ));
+  }
+  return et;
+}
+var Ht;
+function kn() {
+  return Ht || (Ht = 1, function(n) {
+    const t = xr(), e = Ln(), i = Dn(), s = Pn();
+    typeof process == "object" && process.type === "browser" && console.warn(
+      "electron-log/renderer is loaded in the main process. It could cause unexpected behaviour."
+    ), n.exports = r(), n.exports.Logger = t, n.exports.default = n.exports;
+    function r() {
+      const o = new t({
+        allowUnknownLevel: !0,
+        errorHandler: new e(),
+        initializeFn: () => {
+        },
+        logId: "default",
+        transportFactories: {
+          console: i,
+          ipc: s
+        },
+        variables: {
+          processType: "renderer"
+        }
+      });
+      return o.errorHandler.setOptions({
+        logFn({ error: a, errorName: c, showDialog: l }) {
+          o.transports.console({
+            data: [c, a].filter(Boolean),
+            level: "error"
+          }), o.transports.ipc({
+            cmd: "errorHandler",
+            error: {
+              cause: a == null ? void 0 : a.cause,
+              code: a == null ? void 0 : a.code,
+              name: a == null ? void 0 : a.name,
+              message: a == null ? void 0 : a.message,
+              stack: a == null ? void 0 : a.stack
+            },
+            errorName: c,
+            logId: o.logId,
+            showDialog: l
+          });
+        }
+      }), typeof window == "object" && window.addEventListener("message", (a) => {
+        const { cmd: c, logId: l, ...u } = a.data || {}, d = t.getInstance({ logId: l });
+        c === "message" && d.processMessage(u, { transports: ["console"] });
+      }), new Proxy(o, {
+        get(a, c) {
+          return typeof a[c] < "u" ? a[c] : (...l) => o.logData(l, { level: c });
+        }
+      });
+    }
+  }(Je)), Je.exports;
+}
+var tt, Wt;
+function Fn() {
+  if (Wt) return tt;
+  Wt = 1;
+  const n = B, t = F;
+  tt = {
+    findAndReadPackageJson: e,
+    tryReadJsonAt: i
+  };
+  function e() {
+    return i(o()) || i(r()) || i(process.resourcesPath, "app.asar") || i(process.resourcesPath, "app") || i(process.cwd()) || { name: void 0, version: void 0 };
+  }
+  function i(...a) {
+    if (a[0])
+      try {
+        const c = t.join(...a), l = s("package.json", c);
+        if (!l)
+          return;
+        const u = JSON.parse(n.readFileSync(l, "utf8")), d = (u == null ? void 0 : u.productName) || (u == null ? void 0 : u.name);
+        return !d || d.toLowerCase() === "electron" ? void 0 : d ? { name: d, version: u == null ? void 0 : u.version } : void 0;
+      } catch {
+        return;
+      }
+  }
+  function s(a, c) {
+    let l = c;
+    for (; ; ) {
+      const u = t.parse(l), d = u.root, f = u.dir;
+      if (n.existsSync(t.join(l, a)))
+        return t.resolve(t.join(l, a));
+      if (l === d)
+        return null;
+      l = f;
+    }
+  }
+  function r() {
+    const a = process.argv.filter((l) => l.indexOf("--user-data-dir=") === 0);
+    return a.length === 0 || typeof a[0] != "string" ? null : a[0].replace("--user-data-dir=", "");
+  }
+  function o() {
+    var a;
+    try {
+      return (a = require.main) == null ? void 0 : a.filename;
+    } catch {
+      return;
+    }
+  }
+  return tt;
+}
+var rt, Jt;
+function Sr() {
+  if (Jt) return rt;
+  Jt = 1;
+  const n = un, t = le, e = F, i = Fn();
+  class s {
+    constructor() {
+      y(this, "appName");
+      y(this, "appPackageJson");
+      y(this, "platform", process.platform);
+    }
+    getAppLogPath(o = this.getAppName()) {
+      return this.platform === "darwin" ? e.join(this.getSystemPathHome(), "Library/Logs", o) : e.join(this.getAppUserDataPath(o), "logs");
+    }
+    getAppName() {
+      var a;
+      const o = this.appName || ((a = this.getAppPackageJson()) == null ? void 0 : a.name);
+      if (!o)
+        throw new Error(
+          "electron-log can't determine the app name. It tried these methods:\n1. Use `electron.app.name`\n2. Use productName or name from the nearest package.json`\nYou can also set it through log.transports.file.setAppName()"
+        );
+      return o;
+    }
+    /**
+     * @private
+     * @returns {undefined}
+     */
+    getAppPackageJson() {
+      return typeof this.appPackageJson != "object" && (this.appPackageJson = i.findAndReadPackageJson()), this.appPackageJson;
+    }
+    getAppUserDataPath(o = this.getAppName()) {
+      return o ? e.join(this.getSystemPathAppData(), o) : void 0;
+    }
+    getAppVersion() {
+      var o;
+      return (o = this.getAppPackageJson()) == null ? void 0 : o.version;
+    }
+    getElectronLogPath() {
+      return this.getAppLogPath();
+    }
+    getMacOsVersion() {
+      const o = Number(t.release().split(".")[0]);
+      return o <= 19 ? `10.${o - 4}` : o - 9;
+    }
+    /**
+     * @protected
+     * @returns {string}
+     */
+    getOsVersion() {
+      let o = t.type().replace("_", " "), a = t.release();
+      return o === "Darwin" && (o = "macOS", a = this.getMacOsVersion()), `${o} ${a}`;
+    }
+    /**
+     * @return {PathVariables}
+     */
+    getPathVariables() {
+      const o = this.getAppName(), a = this.getAppVersion(), c = this;
+      return {
+        appData: this.getSystemPathAppData(),
+        appName: o,
+        appVersion: a,
+        get electronDefaultDir() {
+          return c.getElectronLogPath();
+        },
+        home: this.getSystemPathHome(),
+        libraryDefaultDir: this.getAppLogPath(o),
+        libraryTemplate: this.getAppLogPath("{appName}"),
+        temp: this.getSystemPathTemp(),
+        userData: this.getAppUserDataPath(o)
+      };
+    }
+    getSystemPathAppData() {
+      const o = this.getSystemPathHome();
+      switch (this.platform) {
+        case "darwin":
+          return e.join(o, "Library/Application Support");
+        case "win32":
+          return process.env.APPDATA || e.join(o, "AppData/Roaming");
+        default:
+          return process.env.XDG_CONFIG_HOME || e.join(o, ".config");
+      }
+    }
+    getSystemPathHome() {
+      var o;
+      return ((o = t.homedir) == null ? void 0 : o.call(t)) || process.env.HOME;
+    }
+    getSystemPathTemp() {
+      return t.tmpdir();
+    }
+    getVersions() {
+      return {
+        app: `${this.getAppName()} ${this.getAppVersion()}`,
+        electron: void 0,
+        os: this.getOsVersion()
+      };
+    }
+    isDev() {
+      return process.env.NODE_ENV === "development" || process.env.ELECTRON_IS_DEV === "1";
+    }
+    isElectron() {
+      return !!process.versions.electron;
+    }
+    onAppEvent(o, a) {
+    }
+    onAppReady(o) {
+      o();
+    }
+    onEveryWebContentsEvent(o, a) {
+    }
+    /**
+     * Listen to async messages sent from opposite process
+     * @param {string} channel
+     * @param {function} listener
+     */
+    onIpc(o, a) {
+    }
+    onIpcInvoke(o, a) {
+    }
+    /**
+     * @param {string} url
+     * @param {Function} [logFunction]
+     */
+    openUrl(o, a = console.error) {
+      const l = { darwin: "open", win32: "start", linux: "xdg-open" }[process.platform] || "xdg-open";
+      n.exec(`${l} ${o}`, {}, (u) => {
+        u && a(u);
+      });
+    }
+    setAppName(o) {
+      this.appName = o;
+    }
+    setPlatform(o) {
+      this.platform = o;
+    }
+    setPreloadFileForSessions({
+      filePath: o,
+      // eslint-disable-line no-unused-vars
+      includeFutureSession: a = !0,
+      // eslint-disable-line no-unused-vars
+      getSessions: c = () => []
+      // eslint-disable-line no-unused-vars
+    }) {
+    }
+    /**
+     * Sent a message to opposite process
+     * @param {string} channel
+     * @param {any} message
+     */
+    sendIpc(o, a) {
+    }
+    showErrorBox(o, a) {
+    }
+  }
+  return rt = s, rt;
+}
+var nt, Gt;
+function Tn() {
+  if (Gt) return nt;
+  Gt = 1;
+  const n = F, t = Sr();
+  class e extends t {
+    /**
+     * @param {object} options
+     * @param {typeof Electron} [options.electron]
+     */
+    constructor({ electron: r } = {}) {
+      super();
+      /**
+       * @type {typeof Electron}
+       */
+      y(this, "electron");
+      this.electron = r;
+    }
+    getAppName() {
+      var o, a;
+      let r;
+      try {
+        r = this.appName || ((o = this.electron.app) == null ? void 0 : o.name) || ((a = this.electron.app) == null ? void 0 : a.getName());
+      } catch {
+      }
+      return r || super.getAppName();
+    }
+    getAppUserDataPath(r) {
+      return this.getPath("userData") || super.getAppUserDataPath(r);
+    }
+    getAppVersion() {
+      var o;
+      let r;
+      try {
+        r = (o = this.electron.app) == null ? void 0 : o.getVersion();
+      } catch {
+      }
+      return r || super.getAppVersion();
+    }
+    getElectronLogPath() {
+      return this.getPath("logs") || super.getElectronLogPath();
+    }
+    /**
+     * @private
+     * @param {any} name
+     * @returns {string|undefined}
+     */
+    getPath(r) {
+      var o;
+      try {
+        return (o = this.electron.app) == null ? void 0 : o.getPath(r);
+      } catch {
+        return;
+      }
+    }
+    getVersions() {
+      return {
+        app: `${this.getAppName()} ${this.getAppVersion()}`,
+        electron: `Electron ${process.versions.electron}`,
+        os: this.getOsVersion()
+      };
+    }
+    getSystemPathAppData() {
+      return this.getPath("appData") || super.getSystemPathAppData();
+    }
+    isDev() {
+      var r;
+      return ((r = this.electron.app) == null ? void 0 : r.isPackaged) !== void 0 ? !this.electron.app.isPackaged : typeof process.execPath == "string" ? n.basename(process.execPath).toLowerCase().startsWith("electron") : super.isDev();
+    }
+    onAppEvent(r, o) {
+      var a;
+      return (a = this.electron.app) == null || a.on(r, o), () => {
+        var c;
+        (c = this.electron.app) == null || c.off(r, o);
+      };
+    }
+    onAppReady(r) {
+      var o, a, c;
+      (o = this.electron.app) != null && o.isReady() ? r() : (a = this.electron.app) != null && a.once ? (c = this.electron.app) == null || c.once("ready", r) : r();
+    }
+    onEveryWebContentsEvent(r, o) {
+      var c, l, u;
+      return (l = (c = this.electron.webContents) == null ? void 0 : c.getAllWebContents()) == null || l.forEach((d) => {
+        d.on(r, o);
+      }), (u = this.electron.app) == null || u.on("web-contents-created", a), () => {
+        var d, f;
+        (d = this.electron.webContents) == null || d.getAllWebContents().forEach((h) => {
+          h.off(r, o);
+        }), (f = this.electron.app) == null || f.off("web-contents-created", a);
+      };
+      function a(d, f) {
+        f.on(r, o);
+      }
+    }
+    /**
+     * Listen to async messages sent from opposite process
+     * @param {string} channel
+     * @param {function} listener
+     */
+    onIpc(r, o) {
+      var a;
+      (a = this.electron.ipcMain) == null || a.on(r, o);
+    }
+    onIpcInvoke(r, o) {
+      var a, c;
+      (c = (a = this.electron.ipcMain) == null ? void 0 : a.handle) == null || c.call(a, r, o);
+    }
+    /**
+     * @param {string} url
+     * @param {Function} [logFunction]
+     */
+    openUrl(r, o = console.error) {
+      var a;
+      (a = this.electron.shell) == null || a.openExternal(r).catch(o);
+    }
+    setPreloadFileForSessions({
+      filePath: r,
+      includeFutureSession: o = !0,
+      getSessions: a = () => {
+        var c;
+        return [(c = this.electron.session) == null ? void 0 : c.defaultSession];
+      }
+    }) {
+      for (const l of a().filter(Boolean))
+        c(l);
+      o && this.onAppEvent("session-created", (l) => {
+        c(l);
+      });
+      function c(l) {
+        typeof l.registerPreloadScript == "function" ? l.registerPreloadScript({
+          filePath: r,
+          id: "electron-log-preload",
+          type: "frame"
+        }) : l.setPreloads([...l.getPreloads(), r]);
+      }
+    }
+    /**
+     * Sent a message to opposite process
+     * @param {string} channel
+     * @param {any} message
+     */
+    sendIpc(r, o) {
+      var a, c;
+      (c = (a = this.electron.BrowserWindow) == null ? void 0 : a.getAllWindows()) == null || c.forEach((l) => {
+        var u, d;
+        ((u = l.webContents) == null ? void 0 : u.isDestroyed()) === !1 && ((d = l.webContents) == null ? void 0 : d.isCrashed()) === !1 && l.webContents.send(r, o);
+      });
+    }
+    showErrorBox(r, o) {
+      var a;
+      (a = this.electron.dialog) == null || a.showErrorBox(r, o);
+    }
+  }
+  return nt = e, nt;
+}
+var ot, Kt;
+function An() {
+  if (Kt) return ot;
+  Kt = 1;
+  const n = B, t = le, e = F, i = _r();
+  let s = !1, r = !1;
+  ot = {
+    initialize({
+      externalApi: c,
+      getSessions: l,
+      includeFutureSession: u,
+      logger: d,
+      preload: f = !0,
+      spyRendererConsole: h = !1
+    }) {
+      c.onAppReady(() => {
+        try {
+          f && o({
+            externalApi: c,
+            getSessions: l,
+            includeFutureSession: u,
+            logger: d,
+            preloadOption: f
+          }), h && a({ externalApi: c, logger: d });
+        } catch (m) {
+          d.warn(m);
+        }
+      });
+    }
+  };
+  function o({
+    externalApi: c,
+    getSessions: l,
+    includeFutureSession: u,
+    logger: d,
+    preloadOption: f
+  }) {
+    let h = typeof f == "string" ? f : void 0;
+    if (s) {
+      d.warn(new Error("log.initialize({ preload }) already called").stack);
+      return;
+    }
+    s = !0;
+    try {
+      h = e.resolve(
+        __dirname,
+        "../renderer/electron-log-preload.js"
+      );
+    } catch {
+    }
+    if (!h || !n.existsSync(h)) {
+      h = e.join(
+        c.getAppUserDataPath() || t.tmpdir(),
+        "electron-log-preload.js"
+      );
+      const m = `
+      try {
+        (${i.toString()})(require('electron'));
+      } catch(e) {
+        console.error(e);
+      }
+    `;
+      n.writeFileSync(h, m, "utf8");
+    }
+    c.setPreloadFileForSessions({
+      filePath: h,
+      includeFutureSession: u,
+      getSessions: l
+    });
+  }
+  function a({ externalApi: c, logger: l }) {
+    if (r) {
+      l.warn(
+        new Error("log.initialize({ spyRendererConsole }) already called").stack
+      );
+      return;
+    }
+    r = !0;
+    const u = ["debug", "info", "warn", "error"];
+    c.onEveryWebContentsEvent(
+      "console-message",
+      (d, f, h) => {
+        l.processMessage({
+          data: [h],
+          level: u[f],
+          variables: { processType: "renderer" }
+        });
+      }
+    );
+  }
+  return ot;
+}
+var it, Yt;
+function Rn() {
+  if (Yt) return it;
+  Yt = 1;
+  class n {
+    constructor({
+      externalApi: i,
+      logFn: s = void 0,
+      onError: r = void 0,
+      showDialog: o = void 0
+    } = {}) {
+      y(this, "externalApi");
+      y(this, "isActive", !1);
+      y(this, "logFn");
+      y(this, "onError");
+      y(this, "showDialog", !0);
+      this.createIssue = this.createIssue.bind(this), this.handleError = this.handleError.bind(this), this.handleRejection = this.handleRejection.bind(this), this.setOptions({ externalApi: i, logFn: s, onError: r, showDialog: o }), this.startCatching = this.startCatching.bind(this), this.stopCatching = this.stopCatching.bind(this);
+    }
+    handle(i, {
+      logFn: s = this.logFn,
+      onError: r = this.onError,
+      processType: o = "browser",
+      showDialog: a = this.showDialog,
+      errorName: c = ""
+    } = {}) {
+      var l;
+      i = t(i);
+      try {
+        if (typeof r == "function") {
+          const u = ((l = this.externalApi) == null ? void 0 : l.getVersions()) || {}, d = this.createIssue;
+          if (r({
+            createIssue: d,
+            error: i,
+            errorName: c,
+            processType: o,
+            versions: u
+          }) === !1)
+            return;
+        }
+        c ? s(c, i) : s(i), a && !c.includes("rejection") && this.externalApi && this.externalApi.showErrorBox(
+          `A JavaScript error occurred in the ${o} process`,
+          i.stack
+        );
+      } catch {
+        console.error(i);
+      }
+    }
+    setOptions({ externalApi: i, logFn: s, onError: r, showDialog: o }) {
+      typeof i == "object" && (this.externalApi = i), typeof s == "function" && (this.logFn = s), typeof r == "function" && (this.onError = r), typeof o == "boolean" && (this.showDialog = o);
+    }
+    startCatching({ onError: i, showDialog: s } = {}) {
+      this.isActive || (this.isActive = !0, this.setOptions({ onError: i, showDialog: s }), process.on("uncaughtException", this.handleError), process.on("unhandledRejection", this.handleRejection));
+    }
+    stopCatching() {
+      this.isActive = !1, process.removeListener("uncaughtException", this.handleError), process.removeListener("unhandledRejection", this.handleRejection);
+    }
+    createIssue(i, s) {
+      var r;
+      (r = this.externalApi) == null || r.openUrl(
+        `${i}?${new URLSearchParams(s).toString()}`
+      );
+    }
+    handleError(i) {
+      this.handle(i, { errorName: "Unhandled" });
+    }
+    handleRejection(i) {
+      const s = i instanceof Error ? i : new Error(JSON.stringify(i));
+      this.handle(s, { errorName: "Unhandled rejection" });
+    }
+  }
+  function t(e) {
+    if (e instanceof Error)
+      return e;
+    if (e && typeof e == "object") {
+      if (e.message)
+        return Object.assign(new Error(e.message), e);
+      try {
+        return new Error(JSON.stringify(e));
+      } catch (i) {
+        return new Error(`Couldn't normalize error ${String(e)}: ${i}`);
+      }
+    }
+    return new Error(`Can't normalize error ${String(e)}`);
+  }
+  return it = n, it;
+}
+var at, Qt;
+function On() {
+  if (Qt) return at;
+  Qt = 1;
+  class n {
+    constructor(e = {}) {
+      y(this, "disposers", []);
+      y(this, "format", "{eventSource}#{eventName}:");
+      y(this, "formatters", {
+        app: {
+          "certificate-error": ({ args: e }) => this.arrayToObject(e.slice(1, 4), [
+            "url",
+            "error",
+            "certificate"
+          ]),
+          "child-process-gone": ({ args: e }) => e.length === 1 ? e[0] : e,
+          "render-process-gone": ({ args: [e, i] }) => i && typeof i == "object" ? { ...i, ...this.getWebContentsDetails(e) } : []
+        },
+        webContents: {
+          "console-message": ({ args: [e, i, s, r] }) => {
+            if (!(e < 3))
+              return { message: i, source: `${r}:${s}` };
+          },
+          "did-fail-load": ({ args: e }) => this.arrayToObject(e, [
+            "errorCode",
+            "errorDescription",
+            "validatedURL",
+            "isMainFrame",
+            "frameProcessId",
+            "frameRoutingId"
+          ]),
+          "did-fail-provisional-load": ({ args: e }) => this.arrayToObject(e, [
+            "errorCode",
+            "errorDescription",
+            "validatedURL",
+            "isMainFrame",
+            "frameProcessId",
+            "frameRoutingId"
+          ]),
+          "plugin-crashed": ({ args: e }) => this.arrayToObject(e, ["name", "version"]),
+          "preload-error": ({ args: e }) => this.arrayToObject(e, ["preloadPath", "error"])
+        }
+      });
+      y(this, "events", {
+        app: {
+          "certificate-error": !0,
+          "child-process-gone": !0,
+          "render-process-gone": !0
+        },
+        webContents: {
+          // 'console-message': true,
+          "did-fail-load": !0,
+          "did-fail-provisional-load": !0,
+          "plugin-crashed": !0,
+          "preload-error": !0,
+          unresponsive: !0
+        }
+      });
+      y(this, "externalApi");
+      y(this, "level", "error");
+      y(this, "scope", "");
+      this.setOptions(e);
+    }
+    setOptions({
+      events: e,
+      externalApi: i,
+      level: s,
+      logger: r,
+      format: o,
+      formatters: a,
+      scope: c
+    }) {
+      typeof e == "object" && (this.events = e), typeof i == "object" && (this.externalApi = i), typeof s == "string" && (this.level = s), typeof r == "object" && (this.logger = r), (typeof o == "string" || typeof o == "function") && (this.format = o), typeof a == "object" && (this.formatters = a), typeof c == "string" && (this.scope = c);
+    }
+    startLogging(e = {}) {
+      this.setOptions(e), this.disposeListeners();
+      for (const i of this.getEventNames(this.events.app))
+        this.disposers.push(
+          this.externalApi.onAppEvent(i, (...s) => {
+            this.handleEvent({ eventSource: "app", eventName: i, handlerArgs: s });
+          })
+        );
+      for (const i of this.getEventNames(this.events.webContents))
+        this.disposers.push(
+          this.externalApi.onEveryWebContentsEvent(
+            i,
+            (...s) => {
+              this.handleEvent(
+                { eventSource: "webContents", eventName: i, handlerArgs: s }
+              );
+            }
+          )
+        );
+    }
+    stopLogging() {
+      this.disposeListeners();
+    }
+    arrayToObject(e, i) {
+      const s = {};
+      return i.forEach((r, o) => {
+        s[r] = e[o];
+      }), e.length > i.length && (s.unknownArgs = e.slice(i.length)), s;
+    }
+    disposeListeners() {
+      this.disposers.forEach((e) => e()), this.disposers = [];
+    }
+    formatEventLog({ eventName: e, eventSource: i, handlerArgs: s }) {
+      var d;
+      const [r, ...o] = s;
+      if (typeof this.format == "function")
+        return this.format({ args: o, event: r, eventName: e, eventSource: i });
+      const a = (d = this.formatters[i]) == null ? void 0 : d[e];
+      let c = o;
+      if (typeof a == "function" && (c = a({ args: o, event: r, eventName: e, eventSource: i })), !c)
+        return;
+      const l = {};
+      return Array.isArray(c) ? l.args = c : typeof c == "object" && Object.assign(l, c), i === "webContents" && Object.assign(l, this.getWebContentsDetails(r == null ? void 0 : r.sender)), [this.format.replace("{eventSource}", i === "app" ? "App" : "WebContents").replace("{eventName}", e), l];
+    }
+    getEventNames(e) {
+      return !e || typeof e != "object" ? [] : Object.entries(e).filter(([i, s]) => s).map(([i]) => i);
+    }
+    getWebContentsDetails(e) {
+      if (!(e != null && e.loadURL))
+        return {};
+      try {
+        return {
+          webContents: {
+            id: e.id,
+            url: e.getURL()
+          }
+        };
+      } catch {
+        return {};
+      }
+    }
+    handleEvent({ eventName: e, eventSource: i, handlerArgs: s }) {
+      var o;
+      const r = this.formatEventLog({ eventName: e, eventSource: i, handlerArgs: s });
+      if (r) {
+        const a = this.scope ? this.logger.scope(this.scope) : this.logger;
+        (o = a == null ? void 0 : a[this.level]) == null || o.call(a, ...r);
+      }
+    }
+  }
+  return at = n, at;
+}
+var st, Zt;
+function Ir() {
+  if (Zt) return st;
+  Zt = 1;
+  const { transform: n } = te();
+  st = {
+    concatFirstStringElements: t,
+    formatScope: i,
+    formatText: r,
+    formatVariables: s,
+    timeZoneFromOffset: e,
+    format({ message: o, logger: a, transport: c, data: l = o == null ? void 0 : o.data }) {
+      switch (typeof c.format) {
+        case "string":
+          return n({
+            message: o,
+            logger: a,
+            transforms: [s, i, r],
+            transport: c,
+            initialData: [c.format, ...l]
+          });
+        case "function":
+          return c.format({
+            data: l,
+            level: (o == null ? void 0 : o.level) || "info",
+            logger: a,
+            message: o,
+            transport: c
+          });
+        default:
+          return l;
+      }
+    }
+  };
+  function t({ data: o }) {
+    return typeof o[0] != "string" || typeof o[1] != "string" || o[0].match(/%[1cdfiOos]/) ? o : [`${o[0]} ${o[1]}`, ...o.slice(2)];
+  }
+  function e(o) {
+    const a = Math.abs(o), c = o > 0 ? "-" : "+", l = Math.floor(a / 60).toString().padStart(2, "0"), u = (a % 60).toString().padStart(2, "0");
+    return `${c}${l}:${u}`;
+  }
+  function i({ data: o, logger: a, message: c }) {
+    const { defaultLabel: l, labelLength: u } = (a == null ? void 0 : a.scope) || {}, d = o[0];
+    let f = c.scope;
+    f || (f = l);
+    let h;
+    return f === "" ? h = u > 0 ? "".padEnd(u + 3) : "" : typeof f == "string" ? h = ` (${f})`.padEnd(u + 3) : h = "", o[0] = d.replace("{scope}", h), o;
+  }
+  function s({ data: o, message: a }) {
+    let c = o[0];
+    if (typeof c != "string")
+      return o;
+    c = c.replace("{level}]", `${a.level}]`.padEnd(6, " "));
+    const l = a.date || /* @__PURE__ */ new Date();
+    return o[0] = c.replace(/\{(\w+)}/g, (u, d) => {
+      var f;
+      switch (d) {
+        case "level":
+          return a.level || "info";
+        case "logId":
+          return a.logId;
+        case "y":
+          return l.getFullYear().toString(10);
+        case "m":
+          return (l.getMonth() + 1).toString(10).padStart(2, "0");
+        case "d":
+          return l.getDate().toString(10).padStart(2, "0");
+        case "h":
+          return l.getHours().toString(10).padStart(2, "0");
+        case "i":
+          return l.getMinutes().toString(10).padStart(2, "0");
+        case "s":
+          return l.getSeconds().toString(10).padStart(2, "0");
+        case "ms":
+          return l.getMilliseconds().toString(10).padStart(3, "0");
+        case "z":
+          return e(l.getTimezoneOffset());
+        case "iso":
+          return l.toISOString();
+        default:
+          return ((f = a.variables) == null ? void 0 : f[d]) || u;
+      }
+    }).trim(), o;
+  }
+  function r({ data: o }) {
+    const a = o[0];
+    if (typeof a != "string")
+      return o;
+    if (a.lastIndexOf("{text}") === a.length - 6)
+      return o[0] = a.replace(/\s?{text}/, ""), o[0] === "" && o.shift(), o;
+    const l = a.split("{text}");
+    let u = [];
+    return l[0] !== "" && u.push(l[0]), u = u.concat(o.slice(1)), l[1] !== "" && u.push(l[1]), u;
+  }
+  return st;
+}
+var ct = { exports: {} }, Xt;
+function De() {
+  return Xt || (Xt = 1, function(n) {
+    const t = Q;
+    n.exports = {
+      serialize: i,
+      maxDepth({ data: s, transport: r, depth: o = (r == null ? void 0 : r.depth) ?? 6 }) {
+        if (!s)
+          return s;
+        if (o < 1)
+          return Array.isArray(s) ? "[array]" : typeof s == "object" && s ? "[object]" : s;
+        if (Array.isArray(s))
+          return s.map((c) => n.exports.maxDepth({
+            data: c,
+            depth: o - 1
+          }));
+        if (typeof s != "object" || s && typeof s.toISOString == "function")
+          return s;
+        if (s === null)
+          return null;
+        if (s instanceof Error)
+          return s;
+        const a = {};
+        for (const c in s)
+          Object.prototype.hasOwnProperty.call(s, c) && (a[c] = n.exports.maxDepth({
+            data: s[c],
+            depth: o - 1
+          }));
+        return a;
+      },
+      toJSON({ data: s }) {
+        return JSON.parse(JSON.stringify(s, e()));
+      },
+      toString({ data: s, transport: r }) {
+        const o = (r == null ? void 0 : r.inspectOptions) || {}, a = s.map((c) => {
+          if (c !== void 0)
+            try {
+              const l = JSON.stringify(c, e(), "  ");
+              return l === void 0 ? void 0 : JSON.parse(l);
+            } catch {
+              return c;
+            }
+        });
+        return t.formatWithOptions(o, ...a);
+      }
+    };
+    function e(s = {}) {
+      const r = /* @__PURE__ */ new WeakSet();
+      return function(o, a) {
+        if (typeof a == "object" && a !== null) {
+          if (r.has(a))
+            return;
+          r.add(a);
+        }
+        return i(o, a, s);
+      };
+    }
+    function i(s, r, o = {}) {
+      const a = (o == null ? void 0 : o.serializeMapAndSet) !== !1;
+      return r instanceof Error ? r.stack : r && (typeof r == "function" ? `[function] ${r.toString()}` : r instanceof Date ? r.toISOString() : a && r instanceof Map && Object.fromEntries ? Object.fromEntries(r) : a && r instanceof Set && Array.from ? Array.from(r) : r);
+    }
+  }(ct)), ct.exports;
+}
+var lt, er;
+function Dt() {
+  if (er) return lt;
+  er = 1, lt = {
+    transformStyles: i,
+    applyAnsiStyles({ data: s }) {
+      return i(s, t, e);
+    },
+    removeStyles({ data: s }) {
+      return i(s, () => "");
+    }
+  };
+  const n = {
+    unset: "\x1B[0m",
+    black: "\x1B[30m",
+    red: "\x1B[31m",
+    green: "\x1B[32m",
+    yellow: "\x1B[33m",
+    blue: "\x1B[34m",
+    magenta: "\x1B[35m",
+    cyan: "\x1B[36m",
+    white: "\x1B[37m",
+    gray: "\x1B[90m"
+  };
+  function t(s) {
+    const r = s.replace(/color:\s*(\w+).*/, "$1").toLowerCase();
+    return n[r] || "";
+  }
+  function e(s) {
+    return s + n.unset;
+  }
+  function i(s, r, o) {
+    const a = {};
+    return s.reduce((c, l, u, d) => {
+      if (a[u])
+        return c;
+      if (typeof l == "string") {
+        let f = u, h = !1;
+        l = l.replace(/%[1cdfiOos]/g, (m) => {
+          if (f += 1, m !== "%c")
+            return m;
+          const v = d[f];
+          return typeof v == "string" ? (a[f] = !0, h = !0, r(v, l)) : m;
+        }), h && o && (l = o(l));
+      }
+      return c.push(l), c;
+    }, []);
+  }
+  return lt;
+}
+var ut, tr;
+function Cn() {
+  if (tr) return ut;
+  tr = 1;
+  const {
+    concatFirstStringElements: n,
+    format: t
+  } = Ir(), { maxDepth: e, toJSON: i } = De(), {
+    applyAnsiStyles: s,
+    removeStyles: r
+  } = Dt(), { transform: o } = te(), a = {
+    error: console.error,
+    warn: console.warn,
+    info: console.info,
+    verbose: console.info,
+    debug: console.debug,
+    silly: console.debug,
+    log: console.log
+  };
+  ut = u;
+  const l = `%c{h}:{i}:{s}.{ms}{scope}%c ${process.platform === "win32" ? ">" : "›"} {text}`;
+  Object.assign(u, {
+    DEFAULT_FORMAT: l
+  });
+  function u(v) {
+    return Object.assign(g, {
+      colorMap: {
+        error: "red",
+        warn: "yellow",
+        info: "cyan",
+        verbose: "unset",
+        debug: "gray",
+        silly: "gray",
+        default: "unset"
+      },
+      format: l,
+      level: "silly",
+      transforms: [
+        d,
+        t,
+        h,
+        n,
+        e,
+        i
+      ],
+      useStyles: process.env.FORCE_STYLES,
+      writeFn({ message: w }) {
+        (a[w.level] || a.info)(...w.data);
+      }
+    });
+    function g(w) {
+      const b = o({ logger: v, message: w, transport: g });
+      g.writeFn({
+        message: { ...w, data: b }
+      });
+    }
+  }
+  function d({ data: v, message: g, transport: w }) {
+    return typeof w.format != "string" || !w.format.includes("%c") ? v : [
+      `color:${m(g.level, w)}`,
+      "color:unset",
+      ...v
+    ];
+  }
+  function f(v, g) {
+    if (typeof v == "boolean")
+      return v;
+    const b = g === "error" || g === "warn" ? process.stderr : process.stdout;
+    return b && b.isTTY;
+  }
+  function h(v) {
+    const { message: g, transport: w } = v;
+    return (f(w.useStyles, g.level) ? s : r)(v);
+  }
+  function m(v, g) {
+    return g.colorMap[v] || g.colorMap.default;
+  }
+  return ut;
+}
+var dt, rr;
+function $r() {
+  if (rr) return dt;
+  rr = 1;
+  const n = ue, t = B, e = le;
+  class i extends n {
+    constructor({
+      path: a,
+      writeOptions: c = { encoding: "utf8", flag: "a", mode: 438 },
+      writeAsync: l = !1
+    }) {
+      super();
+      y(this, "asyncWriteQueue", []);
+      y(this, "bytesWritten", 0);
+      y(this, "hasActiveAsyncWriting", !1);
+      y(this, "path", null);
+      y(this, "initialSize");
+      y(this, "writeOptions", null);
+      y(this, "writeAsync", !1);
+      this.path = a, this.writeOptions = c, this.writeAsync = l;
+    }
+    get size() {
+      return this.getSize();
+    }
+    clear() {
+      try {
+        return t.writeFileSync(this.path, "", {
+          mode: this.writeOptions.mode,
+          flag: "w"
+        }), this.reset(), !0;
+      } catch (a) {
+        return a.code === "ENOENT" ? !0 : (this.emit("error", a, this), !1);
+      }
+    }
+    crop(a) {
+      try {
+        const c = s(this.path, a || 4096);
+        this.clear(), this.writeLine(`[log cropped]${e.EOL}${c}`);
+      } catch (c) {
+        this.emit(
+          "error",
+          new Error(`Couldn't crop file ${this.path}. ${c.message}`),
+          this
+        );
+      }
+    }
+    getSize() {
+      if (this.initialSize === void 0)
+        try {
+          const a = t.statSync(this.path);
+          this.initialSize = a.size;
+        } catch {
+          this.initialSize = 0;
+        }
+      return this.initialSize + this.bytesWritten;
+    }
+    increaseBytesWrittenCounter(a) {
+      this.bytesWritten += Buffer.byteLength(a, this.writeOptions.encoding);
+    }
+    isNull() {
+      return !1;
+    }
+    nextAsyncWrite() {
+      const a = this;
+      if (this.hasActiveAsyncWriting || this.asyncWriteQueue.length === 0)
+        return;
+      const c = this.asyncWriteQueue.join("");
+      this.asyncWriteQueue = [], this.hasActiveAsyncWriting = !0, t.writeFile(this.path, c, this.writeOptions, (l) => {
+        a.hasActiveAsyncWriting = !1, l ? a.emit(
+          "error",
+          new Error(`Couldn't write to ${a.path}. ${l.message}`),
+          this
+        ) : a.increaseBytesWrittenCounter(c), a.nextAsyncWrite();
+      });
+    }
+    reset() {
+      this.initialSize = void 0, this.bytesWritten = 0;
+    }
+    toString() {
+      return this.path;
+    }
+    writeLine(a) {
+      if (a += e.EOL, this.writeAsync) {
+        this.asyncWriteQueue.push(a), this.nextAsyncWrite();
+        return;
+      }
+      try {
+        t.writeFileSync(this.path, a, this.writeOptions), this.increaseBytesWrittenCounter(a);
+      } catch (c) {
+        this.emit(
+          "error",
+          new Error(`Couldn't write to ${this.path}. ${c.message}`),
+          this
+        );
+      }
+    }
+  }
+  dt = i;
+  function s(r, o) {
+    const a = Buffer.alloc(o), c = t.statSync(r), l = Math.min(c.size, o), u = Math.max(0, c.size - o), d = t.openSync(r, "r"), f = t.readSync(d, a, 0, l, u);
+    return t.closeSync(d), a.toString("utf8", 0, f);
+  }
+  return dt;
+}
+var ft, nr;
+function jn() {
+  if (nr) return ft;
+  nr = 1;
+  const n = $r();
+  class t extends n {
+    clear() {
+    }
+    crop() {
+    }
+    getSize() {
+      return 0;
+    }
+    isNull() {
+      return !0;
+    }
+    writeLine() {
+    }
+  }
+  return ft = t, ft;
+}
+var ht, or;
+function Nn() {
+  if (or) return ht;
+  or = 1;
+  const n = ue, t = B, e = F, i = $r(), s = jn();
+  class r extends n {
+    constructor() {
+      super();
+      y(this, "store", {});
+      this.emitError = this.emitError.bind(this);
+    }
+    /**
+     * Provide a File object corresponding to the filePath
+     * @param {string} filePath
+     * @param {WriteOptions} [writeOptions]
+     * @param {boolean} [writeAsync]
+     * @return {File}
+     */
+    provide({ filePath: c, writeOptions: l = {}, writeAsync: u = !1 }) {
+      let d;
+      try {
+        if (c = e.resolve(c), this.store[c])
+          return this.store[c];
+        d = this.createFile({ filePath: c, writeOptions: l, writeAsync: u });
+      } catch (f) {
+        d = new s({ path: c }), this.emitError(f, d);
+      }
+      return d.on("error", this.emitError), this.store[c] = d, d;
+    }
+    /**
+     * @param {string} filePath
+     * @param {WriteOptions} writeOptions
+     * @param {boolean} async
+     * @return {File}
+     * @private
+     */
+    createFile({ filePath: c, writeOptions: l, writeAsync: u }) {
+      return this.testFileWriting({ filePath: c, writeOptions: l }), new i({ path: c, writeOptions: l, writeAsync: u });
+    }
+    /**
+     * @param {Error} error
+     * @param {File} file
+     * @private
+     */
+    emitError(c, l) {
+      this.emit("error", c, l);
+    }
+    /**
+     * @param {string} filePath
+     * @param {WriteOptions} writeOptions
+     * @private
+     */
+    testFileWriting({ filePath: c, writeOptions: l }) {
+      t.mkdirSync(e.dirname(c), { recursive: !0 }), t.writeFileSync(c, "", { flag: "a", mode: l.mode });
+    }
+  }
+  return ht = r, ht;
+}
+var pt, ir;
+function Mn() {
+  if (ir) return pt;
+  ir = 1;
+  const n = B, t = le, e = F, i = Nn(), { transform: s } = te(), { removeStyles: r } = Dt(), {
+    format: o,
+    concatFirstStringElements: a
+  } = Ir(), { toString: c } = De();
+  pt = u;
+  const l = new i();
+  function u(f, { registry: h = l, externalApi: m } = {}) {
+    let v;
+    return h.listenerCount("error") < 1 && h.on("error", (S, I) => {
+      b(`Can't write to ${I}`, S);
+    }), Object.assign(g, {
+      fileName: d(f.variables.processType),
+      format: "[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}]{scope} {text}",
+      getFile: $,
+      inspectOptions: { depth: 5 },
+      level: "silly",
+      maxSize: 1024 ** 2,
+      readAllLogs: re,
+      sync: !0,
+      transforms: [r, o, a, c],
+      writeOptions: { flag: "a", mode: 438, encoding: "utf8" },
+      archiveLogFn(S) {
+        const I = S.toString(), P = e.parse(I);
+        try {
+          n.renameSync(I, e.join(P.dir, `${P.name}.old${P.ext}`));
+        } catch (J) {
+          b("Could not rotate log", J);
+          const ae = Math.round(g.maxSize / 4);
+          S.crop(Math.min(ae, 256 * 1024));
+        }
+      },
+      resolvePathFn(S) {
+        return e.join(S.libraryDefaultDir, S.fileName);
+      },
+      setAppName(S) {
+        f.dependencies.externalApi.setAppName(S);
+      }
+    });
+    function g(S) {
+      const I = $(S);
+      g.maxSize > 0 && I.size > g.maxSize && (g.archiveLogFn(I), I.reset());
+      const J = s({ logger: f, message: S, transport: g });
+      I.writeLine(J);
+    }
+    function w() {
+      v || (v = Object.create(
+        Object.prototype,
+        {
+          ...Object.getOwnPropertyDescriptors(
+            m.getPathVariables()
+          ),
+          fileName: {
+            get() {
+              return g.fileName;
+            },
+            enumerable: !0
+          }
+        }
+      ), typeof g.archiveLog == "function" && (g.archiveLogFn = g.archiveLog, b("archiveLog is deprecated. Use archiveLogFn instead")), typeof g.resolvePath == "function" && (g.resolvePathFn = g.resolvePath, b("resolvePath is deprecated. Use resolvePathFn instead")));
+    }
+    function b(S, I = null, P = "error") {
+      const J = [`electron-log.transports.file: ${S}`];
+      I && J.push(I), f.transports.console({ data: J, date: /* @__PURE__ */ new Date(), level: P });
+    }
+    function $(S) {
+      w();
+      const I = g.resolvePathFn(v, S);
+      return h.provide({
+        filePath: I,
+        writeAsync: !g.sync,
+        writeOptions: g.writeOptions
+      });
+    }
+    function re({ fileFilter: S = (I) => I.endsWith(".log") } = {}) {
+      w();
+      const I = e.dirname(g.resolvePathFn(v));
+      return n.existsSync(I) ? n.readdirSync(I).map((P) => e.join(I, P)).filter(S).map((P) => {
+        try {
+          return {
+            path: P,
+            lines: n.readFileSync(P, "utf8").split(t.EOL)
+          };
+        } catch {
+          return null;
+        }
+      }).filter(Boolean) : [];
+    }
+  }
+  function d(f = process.type) {
+    switch (f) {
+      case "renderer":
+        return "renderer.log";
+      case "worker":
+        return "worker.log";
+      default:
+        return "main.log";
+    }
+  }
+  return pt;
+}
+var gt, ar;
+function Vn() {
+  if (ar) return gt;
+  ar = 1;
+  const { maxDepth: n, toJSON: t } = De(), { transform: e } = te();
+  gt = i;
+  function i(s, { externalApi: r }) {
+    return Object.assign(o, {
+      depth: 3,
+      eventId: "__ELECTRON_LOG_IPC__",
+      level: s.isDev ? "silly" : !1,
+      transforms: [t, n]
+    }), r != null && r.isElectron() ? o : void 0;
+    function o(a) {
+      var c;
+      ((c = a == null ? void 0 : a.variables) == null ? void 0 : c.processType) !== "renderer" && (r == null || r.sendIpc(o.eventId, {
+        ...a,
+        data: e({ logger: s, message: a, transport: o })
+      }));
+    }
+  }
+  return gt;
+}
+var yt, sr;
+function Un() {
+  if (sr) return yt;
+  sr = 1;
+  const n = pn, t = vr, { transform: e } = te(), { removeStyles: i } = Dt(), { toJSON: s, maxDepth: r } = De();
+  yt = o;
+  function o(a) {
+    return Object.assign(c, {
+      client: { name: "electron-application" },
+      depth: 6,
+      level: !1,
+      requestOptions: {},
+      transforms: [i, s, r],
+      makeBodyFn({ message: l }) {
+        return JSON.stringify({
+          client: c.client,
+          data: l.data,
+          date: l.date.getTime(),
+          level: l.level,
+          scope: l.scope,
+          variables: l.variables
+        });
+      },
+      processErrorFn({ error: l }) {
+        a.processMessage(
+          {
+            data: [`electron-log: can't POST ${c.url}`, l],
+            level: "warn"
+          },
+          { transports: ["console", "file"] }
+        );
+      },
+      sendRequestFn({ serverUrl: l, requestOptions: u, body: d }) {
+        const h = (l.startsWith("https:") ? t : n).request(l, {
+          method: "POST",
+          ...u,
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": d.length,
+            ...u.headers
+          }
+        });
+        return h.write(d), h.end(), h;
+      }
+    });
+    function c(l) {
+      if (!c.url)
+        return;
+      const u = c.makeBodyFn({
+        logger: a,
+        message: { ...l, data: e({ logger: a, message: l, transport: c }) },
+        transport: c
+      }), d = c.sendRequestFn({
+        serverUrl: c.url,
+        requestOptions: c.requestOptions,
+        body: Buffer.from(u, "utf8")
+      });
+      d.on("error", (f) => c.processErrorFn({
+        error: f,
+        logger: a,
+        message: l,
+        request: d,
+        transport: c
+      }));
+    }
+  }
+  return yt;
+}
+var mt, cr;
+function Br() {
+  if (cr) return mt;
+  cr = 1;
+  const n = xr(), t = Rn(), e = On(), i = Cn(), s = Mn(), r = Vn(), o = Un();
+  mt = a;
+  function a({ dependencies: c, initializeFn: l }) {
+    var d;
+    const u = new n({
+      dependencies: c,
+      errorHandler: new t(),
+      eventLogger: new e(),
+      initializeFn: l,
+      isDev: (d = c.externalApi) == null ? void 0 : d.isDev(),
+      logId: "default",
+      transportFactories: {
+        console: i,
+        file: s,
+        ipc: r,
+        remote: o
+      },
+      variables: {
+        processType: "main"
+      }
+    });
+    return u.default = u, u.Logger = n, u.processInternalErrorFn = (f) => {
+      u.transports.console.writeFn({
+        message: {
+          data: ["Unhandled electron-log error", f],
+          level: "error"
+        }
+      });
+    }, u;
+  }
+  return mt;
+}
+var vt, lr;
+function qn() {
+  if (lr) return vt;
+  lr = 1;
+  const n = Lt, t = Tn(), { initialize: e } = An(), i = Br(), s = new t({ electron: n }), r = i({
+    dependencies: { externalApi: s },
+    initializeFn: e
+  });
+  vt = r, s.onIpc("__ELECTRON_LOG__", (a, c) => {
+    c.scope && r.Logger.getInstance(c).scope(c.scope);
+    const l = new Date(c.date);
+    o({
+      ...c,
+      date: l.getTime() ? l : /* @__PURE__ */ new Date()
+    });
+  }), s.onIpcInvoke("__ELECTRON_LOG__", (a, { cmd: c = "", logId: l }) => {
+    switch (c) {
+      case "getOptions":
+        return {
+          levels: r.Logger.getInstance({ logId: l }).levels,
+          logId: l
+        };
+      default:
+        return o({ data: [`Unknown cmd '${c}'`], level: "error" }), {};
+    }
+  });
+  function o(a) {
+    var c;
+    (c = r.Logger.getInstance(a)) == null || c.processMessage(a);
+  }
+  return vt;
+}
+var wt, ur;
+function zn() {
+  if (ur) return wt;
+  ur = 1;
+  const n = Sr(), t = Br(), e = new n();
+  return wt = t({
+    dependencies: { externalApi: e }
+  }), wt;
+}
+const Hn = typeof process > "u" || process.type === "renderer" || process.type === "worker", Wn = typeof process == "object" && process.type === "browser";
+Hn ? (_r(), Se.exports = kn()) : Wn ? Se.exports = qn() : Se.exports = zn();
+var Jn = Se.exports;
+const K = /* @__PURE__ */ In(Jn);
+class Gn {
+  constructor() {
+    const t = F.join(H.getPath("userData"), "data", "logs", "app.log");
+    K.transports.file.resolvePathFn = () => t, K.transports.file.format = "[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}", K.transports.file.maxSize = 5 * 1024 * 1024, K.transports.console.format = "{h}:{i}:{s} › {text}";
+  }
+  // 初始化 IPC 监听，供渲染进程调用
+  initIpc() {
+    Ie.on("system:log", (t, { level: e, message: i, data: s }) => {
+      K.scope("Renderer")[e](i, s || "");
+    });
+  }
+  // 主进程直接调用的方法
+  info(t, ...e) {
+    K.info(t, ...e);
+  }
+  warn(t, ...e) {
+    K.warn(t, ...e);
+  }
+  error(t, ...e) {
+    K.error(t, ...e);
+  }
+}
+const E = new Gn();
+function Kn(n) {
+  const t = [
     "windows_amd64",
     "windows_arm64",
     "windows_386"
   ];
-  for (const arch of archPriority) {
-    const item = apiData.frpc.archs[arch];
-    if (item) {
+  for (const e of t) {
+    const i = n.frpc.archs[e];
+    if (i)
       return {
-        version: apiData.frpc.ver,
-        arch,
-        url: item.url,
-        hash: item.hash,
-        size: item.size
+        version: n.frpc.ver,
+        arch: e,
+        url: i.url,
+        hash: i.hash,
+        size: i.size
       };
-    }
   }
   throw new Error("未找到 Windows 平台 frpc");
 }
-class SakuraFrpDownloader {
+class Yn {
   constructor() {
     /** 本地统一名称 */
-    __publicField(this, "fileName", "sakurafrp.exe");
+    y(this, "fileName", "sakurafrp.exe");
   }
   get binDir() {
-    return path.join(app.getPath("userData"), "bin");
+    return F.join(H.getPath("userData"), "bin");
   }
   get filePath() {
-    return path.join(this.binDir, this.fileName);
+    return F.join(this.binDir, this.fileName);
   }
   exists() {
-    return fs.existsSync(this.filePath);
+    return B.existsSync(this.filePath);
   }
-  async download(url, expectedHash, onProgress) {
-    fs.mkdirSync(this.binDir, { recursive: true });
-    const tempPath = this.filePath + ".download";
-    return new Promise((resolve, reject) => {
-      const file = fs.createWriteStream(tempPath);
-      const md5 = require$$1.createHash("md5");
-      https.get(url, (res) => {
-        if (res.statusCode !== 200) {
-          reject(new Error(`下载失败，HTTP ${res.statusCode}`));
+  async download(t, e, i) {
+    B.mkdirSync(this.binDir, { recursive: !0 });
+    const s = this.filePath + ".download";
+    return new Promise((r, o) => {
+      const a = B.createWriteStream(s), c = Le.createHash("md5");
+      vr.get(t, (l) => {
+        if (l.statusCode !== 200) {
+          E.error("下载失败", l.statusCode), o(new Error(`下载失败，HTTP ${l.statusCode}`));
           return;
         }
-        const total = Number(res.headers["content-length"] || 0);
-        let received = 0;
-        res.on("data", (chunk) => {
-          received += chunk.length;
-          md5.update(chunk);
-          if (total && onProgress) {
-            onProgress(Math.floor(received / total * 100));
-          }
-        });
-        res.pipe(file);
-        file.on("finish", () => {
-          file.close();
-          if (expectedHash) {
-            const fileHash = md5.digest("hex");
-            if (fileHash !== expectedHash) {
-              fs.unlinkSync(tempPath);
-              reject(new Error("sakurafrp.exe 校验失败"));
+        const u = Number(l.headers["content-length"] || 0);
+        let d = 0;
+        l.on("data", (f) => {
+          d += f.length, c.update(f), u && i && i(Math.floor(d / u * 100));
+        }), l.pipe(a), a.on("finish", () => {
+          if (a.close(), e) {
+            const f = c.digest("hex");
+            if (f !== e) {
+              B.unlinkSync(s), E.error("sakurafrp.exe 校验失败", f), o(new Error("sakurafrp.exe 校验失败"));
               return;
             }
           }
-          fs.renameSync(tempPath, this.filePath);
-          resolve(this.filePath);
+          B.renameSync(s, this.filePath), r(this.filePath);
         });
-      }).on("error", (err) => {
-        fs.unlink(tempPath, () => {
-        });
-        reject(err);
+      }).on("error", (l) => {
+        B.unlink(s, () => {
+        }), o(l);
       });
     });
   }
 }
-class SakuraFrpcManager {
-  constructor(win2) {
-    __publicField(this, "processes", /* @__PURE__ */ new Map());
-    __publicField(this, "win");
-    this.win = win2;
+class Qn {
+  constructor(t) {
+    y(this, "processes", /* @__PURE__ */ new Map());
+    y(this, "win");
+    this.win = t;
   }
   getFrpcPath() {
-    return path.join(app.getPath("userData"), "bin", "sakurafrp.exe");
+    return F.join(H.getPath("userData"), "bin", "sakurafrp.exe");
   }
   /** 是否存在 frpc */
   exists() {
-    return fs.existsSync(this.getFrpcPath());
+    const t = B.existsSync(this.getFrpcPath());
+    return E.info(`检查frpc文件是否存在: ${t}, 路径: ${this.getFrpcPath()}`), t;
   }
   /** 启动隧道 */
-  startTunnel(token, tunnelId) {
-    if (!this.exists()) {
-      throw new Error("frpc 不存在");
-    }
-    if (this.processes.has(tunnelId)) {
-      throw new Error(`隧道 ${tunnelId} 已在运行`);
-    }
-    const frpcPath = this.getFrpcPath();
-    const proc = spawn(frpcPath, ["-f", `${token}:${tunnelId}`], {
-      windowsHide: true
+  startTunnel(t, e) {
+    if (E.info(`开始启动隧道: ${e}，使用token: ${t}`), !this.exists())
+      throw E.error("frpc 不存在"), new Error("frpc 不存在");
+    if (this.processes.has(e))
+      throw E.error(`隧道 ${e} 已在运行`), new Error(`隧道 ${e} 已在运行`);
+    const i = this.getFrpcPath();
+    E.info(`使用frpc路径: ${i}`);
+    const s = fn(i, ["-f", `${t}:${e}`], {
+      windowsHide: !0
     });
-    this.processes.set(tunnelId, {
-      tunnelId,
-      process: proc
-    });
-    proc.stdout.on("data", (data) => {
-      this.sendLog(tunnelId, data.toString(), "stdout");
-    });
-    proc.stderr.on("data", (data) => {
-      this.sendLog(tunnelId, data.toString(), "stderr");
-    });
-    proc.on("close", (code) => {
-      this.sendLog(tunnelId, `进程已退出，code=${code}`, "close");
-      this.processes.delete(tunnelId);
-    });
-    proc.on("error", (err) => {
-      this.sendLog(tunnelId, err.message, "error");
+    this.processes.set(e, {
+      tunnelId: e,
+      process: s
+    }), E.info(`隧道 ${e} 进程已启动`), s.stdout.on("data", (r) => {
+      E.info(`隧道 ${e} 输出: ${r.toString()}`), this.sendLog(e, r.toString(), "stdout");
+    }), s.stderr.on("data", (r) => {
+      E.warn(`隧道 ${e} 错误: ${r.toString()}`), this.sendLog(e, r.toString(), "stderr");
+    }), s.on("close", (r) => {
+      E.info(`隧道 ${e} 进程已退出，code=${r}`), this.sendLog(e, `进程已退出，code=${r}`, "close"), this.processes.delete(e);
+    }), s.on("error", (r) => {
+      E.error(`隧道 ${e} 发生错误: ${r.message}`), this.sendLog(e, r.message, "error");
     });
   }
   /** 停止隧道 */
-  stopTunnel(tunnelId) {
-    const item = this.processes.get(tunnelId);
-    if (!item) return;
-    item.process.kill();
-    this.processes.delete(tunnelId);
+  stopTunnel(t) {
+    E.info(`停止隧道: ${t}`);
+    const e = this.processes.get(t);
+    if (!e) {
+      E.warn(`尝试停止不存在的隧道: ${t}`);
+      return;
+    }
+    e.process.kill(), this.processes.delete(t), E.info(`隧道 ${t} 已停止`);
   }
   /** 停止全部 */
   stopAll() {
-    for (const [id, item] of this.processes) {
-      item.process.kill();
-      this.processes.delete(id);
-    }
+    E.info("停止所有隧道进程");
+    for (const [t, e] of this.processes)
+      E.info(`停止隧道: ${t}`), e.process.kill(), this.processes.delete(t);
   }
   /** 推送日志到前端 */
-  sendLog(tunnelId, message, type) {
-    this.win.webContents.send("frpc:log", {
-      tunnelId,
-      message,
-      type,
+  sendLog(t, e, i) {
+    E.info(`发送日志到前端: 隧道${t}, 类型${i}`), this.win.webContents.send("frpc:log", {
+      tunnelId: t,
+      message: e,
+      type: i,
       time: Date.now()
     });
   }
 }
-var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
-var dist$1 = {};
-var status$1 = {};
-var dist = {};
-var parse = {};
-var __assign = commonjsGlobal && commonjsGlobal.__assign || function() {
-  __assign = Object.assign || function(t) {
-    for (var s, i = 1, n = arguments.length; i < n; i++) {
-      s = arguments[i];
-      for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
-        t[p] = s[p];
+var Lr = {}, Pe = {}, Z = {}, de = {}, Be = p && p.__assign || function() {
+  return Be = Object.assign || function(n) {
+    for (var t, e = 1, i = arguments.length; e < i; e++) {
+      t = arguments[e];
+      for (var s in t) Object.prototype.hasOwnProperty.call(t, s) && (n[s] = t[s]);
     }
-    return t;
-  };
-  return __assign.apply(this, arguments);
+    return n;
+  }, Be.apply(this, arguments);
 };
-Object.defineProperty(parse, "__esModule", { value: true });
-parse.parse = void 0;
-var colorLookupNames = {
-  "0": "black",
-  "1": "dark_blue",
-  "2": "dark_green",
-  "3": "dark_aqua",
-  "4": "dark_red",
-  "5": "dark_purple",
-  "6": "gold",
-  "7": "gray",
-  "8": "dark_gray",
-  "9": "blue",
-  "a": "green",
-  "b": "aqua",
-  "c": "red",
-  "d": "light_purple",
-  "e": "yellow",
-  "f": "white",
-  "g": "minecoin_gold"
-};
-var formattingLookupProperties = {
-  "k": "obfuscated",
-  "l": "bold",
-  "m": "strikethrough",
-  "n": "underline",
-  "o": "italics"
-};
-var parseBool = function(value) {
-  return typeof value === "boolean" ? value : typeof value === "string" ? value.toLowerCase() === "true" : false;
-};
-var parseText = function(text, options) {
-  var _a;
-  var result = [{ text: "", color: "white" }];
-  var position = 0;
-  while (position + 1 <= text.length) {
-    var character = text.charAt(position);
-    var item = result[result.length - 1];
-    if (character === "\n") {
-      result.push({ text: "\n", color: "white" });
-      position++;
+Object.defineProperty(de, "__esModule", { value: !0 });
+de.parse = void 0;
+var $t = {
+  0: "black",
+  1: "dark_blue",
+  2: "dark_green",
+  3: "dark_aqua",
+  4: "dark_red",
+  5: "dark_purple",
+  6: "gold",
+  7: "gray",
+  8: "dark_gray",
+  9: "blue",
+  a: "green",
+  b: "aqua",
+  c: "red",
+  d: "light_purple",
+  e: "yellow",
+  f: "white",
+  g: "minecoin_gold"
+}, bt = {
+  k: "obfuscated",
+  l: "bold",
+  m: "strikethrough",
+  n: "underline",
+  o: "italics"
+}, L = function(n) {
+  return typeof n == "boolean" ? n : typeof n == "string" ? n.toLowerCase() === "true" : !1;
+}, Dr = function(n, t) {
+  for (var e, i = [{ text: "", color: "white" }], s = 0; s + 1 <= n.length; ) {
+    var r = n.charAt(s), o = i[i.length - 1];
+    if (r === `
+`) {
+      i.push({ text: `
+`, color: "white" }), s++;
       continue;
     }
-    if (character !== options.formattingCharacter) {
-      item.text += character;
-      position++;
+    if (r !== t.formattingCharacter) {
+      o.text += r, s++;
       continue;
     }
-    var formattingCode = text.charAt(position + 1).toLowerCase();
-    position += 2;
-    if (formattingCode === "r") {
-      result.push({ text: "", color: "white" });
+    var a = n.charAt(s + 1).toLowerCase();
+    if (s += 2, a === "r") {
+      i.push({ text: "", color: "white" });
       continue;
     }
-    if (formattingCode in formattingLookupProperties) {
-      if (item.text.length > 0) {
-        result.push(__assign(__assign({}, item), (_a = { text: "" }, _a[formattingLookupProperties[formattingCode]] = true, _a)));
-      } else {
-        item[formattingLookupProperties[formattingCode]] = true;
-      }
-    } else if (formattingCode in colorLookupNames) {
-      result.push({ text: "", color: colorLookupNames[formattingCode] });
+    a in bt ? o.text.length > 0 ? i.push(Be(Be({}, o), (e = { text: "" }, e[bt[a]] = !0, e))) : o[bt[a]] = !0 : a in $t && i.push({ text: "", color: $t[a] });
+  }
+  return i;
+}, Pr = function(n, t, e) {
+  var i, s, r = Dr(n.text || n.translate || "", t), o = r[0];
+  if ((e && L(e.bold) && !L(n.bold) || L(n.bold)) && (o.bold = !0), (e && L(e.italic) && !L(n.italic) || L(n.italic)) && (o.italics = !0), (e && L(e.underlined) && !L(n.underlined) || L(n.underlined)) && (o.underline = !0), (e && L(e.strikethrough) && !L(n.strikethrough) || L(n.strikethrough)) && (o.strikethrough = !0), (e && L(e.obfuscated) && !L(n.obfuscated) || L(n.obfuscated)) && (o.obfuscated = !0), n.color && (o.color = $t[(s = (i = n.color) !== null && i !== void 0 ? i : e == null ? void 0 : e.color) !== null && s !== void 0 ? s : "white"] || n.color), n.extra)
+    for (var a = 0, c = n.extra; a < c.length; a++) {
+      var l = c[a];
+      r.push.apply(r, Pr(l, t, n));
     }
-  }
-  return result;
+  return r;
 };
-var parseChat = function(chat, options, parent) {
-  var _a, _b;
-  var result = parseText(chat.text || chat.translate || "", options);
-  var item = result[0];
-  if (parent && parseBool(parent.bold) && !parseBool(chat.bold) || parseBool(chat.bold)) {
-    item.bold = true;
-  }
-  if (parent && parseBool(parent.italic) && !parseBool(chat.italic) || parseBool(chat.italic)) {
-    item.italics = true;
-  }
-  if (parent && parseBool(parent.underlined) && !parseBool(chat.underlined) || parseBool(chat.underlined)) {
-    item.underline = true;
-  }
-  if (parent && parseBool(parent.strikethrough) && !parseBool(chat.strikethrough) || parseBool(chat.strikethrough)) {
-    item.strikethrough = true;
-  }
-  if (parent && parseBool(parent.obfuscated) && !parseBool(chat.obfuscated) || parseBool(chat.obfuscated)) {
-    item.obfuscated = true;
-  }
-  if (chat.color) {
-    item.color = colorLookupNames[(_b = (_a = chat.color) !== null && _a !== void 0 ? _a : parent === null || parent === void 0 ? void 0 : parent.color) !== null && _b !== void 0 ? _b : "white"] || chat.color;
-  }
-  if (chat.extra) {
-    for (var _i = 0, _c = chat.extra; _i < _c.length; _i++) {
-      var extra = _c[_i];
-      result.push.apply(result, parseChat(extra, options, chat));
-    }
-  }
-  return result;
-};
-parse.parse = function(input, options) {
-  options = Object.assign({
+de.parse = function(n, t) {
+  t = Object.assign({
     formattingCharacter: "§"
-  }, options);
-  var result;
-  switch (typeof input) {
+  }, t);
+  var e;
+  switch (typeof n) {
     case "string": {
-      result = parseText(input, options);
+      e = Dr(n, t);
       break;
     }
     case "object": {
-      result = parseChat(input, options);
+      e = Pr(n, t);
       break;
     }
-    default: {
-      throw new Error("Unexpected server MOTD type: " + typeof input);
-    }
+    default:
+      throw new Error("Unexpected server MOTD type: " + typeof n);
   }
-  return result.filter(function(item) {
-    return item.text.length > 0;
+  return e.filter(function(i) {
+    return i.text.length > 0;
   });
 };
-var clean = {};
-var __importDefault$h = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
+var ke = {}, Zn = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-Object.defineProperty(clean, "__esModule", { value: true });
-clean.clean = void 0;
-var assert_1$e = __importDefault$h(require$$0$1);
-clean.clean = function(text, options) {
-  assert_1$e.default(typeof text === "string" || Array.isArray(text), "Expected 'text' to be typeof 'string' or 'array', received '" + typeof text + "'");
-  options = Object.assign({
+Object.defineProperty(ke, "__esModule", { value: !0 });
+ke.clean = void 0;
+var Xn = Zn(D);
+ke.clean = function(n, t) {
+  return Xn.default(typeof n == "string" || Array.isArray(n), "Expected 'text' to be typeof 'string' or 'array', received '" + typeof n + "'"), t = Object.assign({
     formattingCharacter: "§"
-  }, options);
-  if (typeof text === "string") {
-    return text.replace(new RegExp(options.formattingCharacter + "[0-9a-gk-or]", "g"), "");
-  }
-  return text.map(function(item) {
-    return item.text;
+  }, t), typeof n == "string" ? n.replace(new RegExp(t.formattingCharacter + "[0-9a-gk-or]", "g"), "") : n.map(function(e) {
+    return e.text;
   }).join("");
 };
-var format = {};
-var color = {};
-Object.defineProperty(color, "__esModule", { value: true });
-var ColorUtil = (
+var Fe = {}, Pt = {};
+Object.defineProperty(Pt, "__esModule", { value: !0 });
+var eo = (
   /** @class */
   function() {
-    function ColorUtil2(list) {
+    function n(t) {
       this.list = [];
-      for (var key in list) {
+      for (var e in t)
         this.list.push({
-          name: key,
-          hex: list[key],
-          sum: sum(list[key])
+          name: e,
+          hex: t[e],
+          sum: dr(t[e])
         });
-      }
     }
-    ColorUtil2.prototype.closest = function(input) {
-      var colorSum = sum(input);
-      var closest = null;
-      var lastDifference = Infinity;
-      for (var _i = 0, _a = this.list; _i < _a.length; _i++) {
-        var color2 = _a[_i];
-        var diff = Math.abs(colorSum - color2.sum);
-        if (closest === null || diff < lastDifference) {
-          closest = color2;
-          lastDifference = diff;
-        }
+    return n.prototype.closest = function(t) {
+      for (var e = dr(t), i = null, s = 1 / 0, r = 0, o = this.list; r < o.length; r++) {
+        var a = o[r], c = Math.abs(e - a.sum);
+        (i === null || c < s) && (i = a, s = c);
       }
-      return closest;
-    };
-    return ColorUtil2;
+      return i;
+    }, n;
   }()
-);
-var sum = function(input) {
-  var sum2 = 0;
-  input = input.replace("#", "");
-  var r = input.substring(0, 2);
-  var g = input.substring(2, 4);
-  var b = input.substring(4, 6);
-  sum2 = Math.sqrt(Math.pow(parseInt(r, 16), 2) + Math.pow(parseInt(g, 16), 2) + Math.pow(parseInt(b, 16), 2));
-  return sum2;
+), dr = function(n) {
+  var t = 0;
+  n = n.replace("#", "");
+  var e = n.substring(0, 2), i = n.substring(2, 4), s = n.substring(4, 6);
+  return t = Math.sqrt(Math.pow(parseInt(e, 16), 2) + Math.pow(parseInt(i, 16), 2) + Math.pow(parseInt(s, 16), 2)), t;
 };
-color.default = ColorUtil;
-var __importDefault$g = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
+Pt.default = eo;
+var kr = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-Object.defineProperty(format, "__esModule", { value: true });
-format.format = void 0;
-var assert_1$d = __importDefault$g(require$$0$1);
-var parse_1 = parse;
-var color_1 = __importDefault$g(color);
-var colorLookupCodes = {
-  "black": "0",
-  "dark_blue": "1",
-  "dark_green": "2",
-  "dark_aqua": "3",
-  "dark_red": "4",
-  "dark_purple": "5",
-  "gold": "6",
-  "gray": "7",
-  "dark_gray": "8",
-  "blue": "9",
-  "green": "a",
-  "aqua": "b",
-  "red": "c",
-  "light_purple": "d",
-  "yellow": "e",
-  "white": "f",
-  "minecoin_gold": "g"
-};
-var colorValues = {
-  "black": "#000000",
-  "dark_blue": "#0000AA",
-  "dark_green": "#00AA00",
-  "dark_aqua": "#00AAAA",
-  "dark_red": "#AA0000",
-  "dark_purple": "#AA00AA",
-  "gold": "#FFAA00",
-  "gray": "#AAAAAA",
-  "dark_gray": "#555555",
-  "blue": "#5555FF",
-  "green": "#55FF55",
-  "aqua": "#55FFFF",
-  "red": "#FF5555",
-  "light_purple": "#FF55FF",
-  "yellow": "#FFFF55",
-  "white": "#FFFFFF"
-};
-var colorUtil = new color_1.default(colorValues);
-format.format = function(input, options) {
-  assert_1$d.default(typeof input === "string" || Array.isArray(input), "Expected 'input' to be typeof 'array' or typeof 'string', got '" + typeof input + "'");
-  if (typeof input === "string") {
-    input = parse_1.parse(input, options);
-  }
-  var opts = Object.assign({
+Object.defineProperty(Fe, "__esModule", { value: !0 });
+Fe.format = void 0;
+var to = kr(D), ro = de, no = kr(Pt), Et = {
+  black: "0",
+  dark_blue: "1",
+  dark_green: "2",
+  dark_aqua: "3",
+  dark_red: "4",
+  dark_purple: "5",
+  gold: "6",
+  gray: "7",
+  dark_gray: "8",
+  blue: "9",
+  green: "a",
+  aqua: "b",
+  red: "c",
+  light_purple: "d",
+  yellow: "e",
+  white: "f",
+  minecoin_gold: "g"
+}, oo = {
+  black: "#000000",
+  dark_blue: "#0000AA",
+  dark_green: "#00AA00",
+  dark_aqua: "#00AAAA",
+  dark_red: "#AA0000",
+  dark_purple: "#AA00AA",
+  gold: "#FFAA00",
+  gray: "#AAAAAA",
+  dark_gray: "#555555",
+  blue: "#5555FF",
+  green: "#55FF55",
+  aqua: "#55FFFF",
+  red: "#FF5555",
+  light_purple: "#FF55FF",
+  yellow: "#FFFF55",
+  white: "#FFFFFF"
+}, io = new no.default(oo);
+Fe.format = function(n, t) {
+  to.default(typeof n == "string" || Array.isArray(n), "Expected 'input' to be typeof 'array' or typeof 'string', got '" + typeof n + "'"), typeof n == "string" && (n = ro.parse(n, t));
+  for (var e = Object.assign({
     formattingCharacter: "§",
-    replaceNearestColor: true
-  }, options);
-  var result = "";
-  for (var _i = 0, input_1 = input; _i < input_1.length; _i++) {
-    var item = input_1[_i];
-    if (item.color) {
-      var formatColor = colorLookupCodes[item.color];
-      if (formatColor) {
-        result += opts.formattingCharacter + colorLookupCodes[item.color];
-      } else if (opts.replaceNearestColor) {
-        var newColor = colorUtil.closest(item.color);
-        if (newColor) {
-          var colorCode = colorLookupCodes[newColor.name];
-          if (colorCode) {
-            result += opts.formattingCharacter + colorCode;
-          }
+    replaceNearestColor: !0
+  }, t), i = "", s = 0, r = n; s < r.length; s++) {
+    var o = r[s];
+    if (o.color) {
+      var a = Et[o.color];
+      if (a)
+        i += e.formattingCharacter + Et[o.color];
+      else if (e.replaceNearestColor) {
+        var c = io.closest(o.color);
+        if (c) {
+          var l = Et[c.name];
+          l && (i += e.formattingCharacter + l);
         }
       }
     }
-    if (item.bold) {
-      result += opts.formattingCharacter + "l";
-    }
-    if (item.italics) {
-      result += opts.formattingCharacter + "o";
-    }
-    if (item.underline) {
-      result += opts.formattingCharacter + "n";
-    }
-    if (item.strikethrough) {
-      result += opts.formattingCharacter + "m";
-    }
-    if (item.obfuscated) {
-      result += opts.formattingCharacter + "k";
-    }
-    result += item.text;
+    o.bold && (i += e.formattingCharacter + "l"), o.italics && (i += e.formattingCharacter + "o"), o.underline && (i += e.formattingCharacter + "n"), o.strikethrough && (i += e.formattingCharacter + "m"), o.obfuscated && (i += e.formattingCharacter + "k"), i += o.text;
   }
-  return result;
+  return i;
 };
-var toHTML = {};
-var __importDefault$f = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
+var Te = {}, ao = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-Object.defineProperty(toHTML, "__esModule", { value: true });
-toHTML.toHTML = void 0;
-var assert_1$c = __importDefault$f(require$$0$1);
-var defaultSerializers = {
-  "black": { styles: { color: "#000000" } },
-  "dark_blue": { styles: { color: "#0000AA" } },
-  "dark_green": { styles: { color: "#00AA00" } },
-  "dark_aqua": { styles: { color: "#00AAAA" } },
-  "dark_red": { styles: { color: "#AA0000" } },
-  "dark_purple": { styles: { color: "#AA00AA" } },
-  "gold": { styles: { color: "#FFAA00" } },
-  "gray": { styles: { color: "#AAAAAA" } },
-  "dark_gray": { styles: { color: "#555555" } },
-  "blue": { styles: { color: "#5555FF" } },
-  "green": { styles: { color: "#55FF55" } },
-  "aqua": { styles: { color: "#55FFFF" } },
-  "red": { styles: { color: "#FF5555" } },
-  "light_purple": { styles: { color: "#FF55FF" } },
-  "yellow": { styles: { color: "#FFFF55" } },
-  "white": { styles: { color: "#FFFFFF" } },
-  "minecoin_gold": { styles: { color: "#DDD605" } },
-  "obfuscated": { classes: ["minecraft-formatting-obfuscated"] },
-  "bold": { styles: { "font-weight": "bold" } },
-  "strikethrough": { styles: { "text-decoration": "line-through" } },
-  "underline": { styles: { "text-decoration": "underline" } },
-  "italics": { styles: { "font-style": "italic" } }
+Object.defineProperty(Te, "__esModule", { value: !0 });
+Te.toHTML = void 0;
+var so = ao(D), co = {
+  black: { styles: { color: "#000000" } },
+  dark_blue: { styles: { color: "#0000AA" } },
+  dark_green: { styles: { color: "#00AA00" } },
+  dark_aqua: { styles: { color: "#00AAAA" } },
+  dark_red: { styles: { color: "#AA0000" } },
+  dark_purple: { styles: { color: "#AA00AA" } },
+  gold: { styles: { color: "#FFAA00" } },
+  gray: { styles: { color: "#AAAAAA" } },
+  dark_gray: { styles: { color: "#555555" } },
+  blue: { styles: { color: "#5555FF" } },
+  green: { styles: { color: "#55FF55" } },
+  aqua: { styles: { color: "#55FFFF" } },
+  red: { styles: { color: "#FF5555" } },
+  light_purple: { styles: { color: "#FF55FF" } },
+  yellow: { styles: { color: "#FFFF55" } },
+  white: { styles: { color: "#FFFFFF" } },
+  minecoin_gold: { styles: { color: "#DDD605" } },
+  obfuscated: { classes: ["minecraft-formatting-obfuscated"] },
+  bold: { styles: { "font-weight": "bold" } },
+  strikethrough: { styles: { "text-decoration": "line-through" } },
+  underline: { styles: { "text-decoration": "underline" } },
+  italics: { styles: { "font-style": "italic" } }
 };
-toHTML.toHTML = function(tree, options) {
-  assert_1$c.default(Array.isArray(tree), "Expected 'tree' to be typeof 'array', received '" + typeof tree + "'");
-  var opts = Object.assign({
-    serializers: defaultSerializers,
+Te.toHTML = function(n, t) {
+  so.default(Array.isArray(n), "Expected 'tree' to be typeof 'array', received '" + typeof n + "'");
+  for (var e = Object.assign({
+    serializers: co,
     rootTag: "span"
-  }, options);
-  var result = "<" + opts.rootTag + ">";
-  for (var _i = 0, tree_1 = tree; _i < tree_1.length; _i++) {
-    var item = tree_1[_i];
-    var classes = [];
-    var styles = {};
-    for (var prop in item) {
-      if (prop === "text")
-        continue;
-      var serializer = opts.serializers[prop === "color" ? item[prop] : prop];
-      if (serializer) {
-        if (serializer.classes && serializer.classes.length > 0) {
-          classes.push.apply(classes, serializer.classes);
-        }
-        if (serializer.styles) {
-          for (var attr in serializer.styles) {
-            if (!(attr in styles)) {
-              styles[attr] = [];
-            }
-            styles[attr].push(serializer.styles[attr]);
-          }
-        }
-      } else if (prop === "color") {
-        if (!("color" in styles)) {
-          styles.color = [];
-        }
-        styles.color.push(item[prop]);
+  }, t), i = "<" + e.rootTag + ">", s = 0, r = n; s < r.length; s++) {
+    var o = r[s], a = [], c = {};
+    for (var l in o)
+      if (l !== "text") {
+        var u = e.serializers[l === "color" ? o[l] : l];
+        if (u) {
+          if (u.classes && u.classes.length > 0 && a.push.apply(a, u.classes), u.styles)
+            for (var d in u.styles)
+              d in c || (c[d] = []), c[d].push(u.styles[d]);
+        } else l === "color" && ("color" in c || (c.color = []), c.color.push(o[l]));
       }
-    }
-    var content = item.text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-    result += "<span" + (classes.length > 0 ? ' class="' + classes.join(" ") + '"' : "") + (Object.keys(styles).length > 0 ? ' style="' + Object.entries(styles).map(function(style) {
-      return style[0] + ": " + style[1].join(" ") + ";";
-    }).join(" ") + '"' : "") + ">" + content + "</span>";
+    var f = o.text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    i += "<span" + (a.length > 0 ? ' class="' + a.join(" ") + '"' : "") + (Object.keys(c).length > 0 ? ' style="' + Object.entries(c).map(function(h) {
+      return h[0] + ": " + h[1].join(" ") + ";";
+    }).join(" ") + '"' : "") + ">" + f + "</span>";
   }
-  result += "</" + opts.rootTag + ">";
-  return result;
+  return i += "</" + e.rootTag + ">", i;
 };
-(function(exports$1) {
-  Object.defineProperty(exports$1, "__esModule", { value: true });
-  exports$1.toHTML = exports$1.format = exports$1.clean = exports$1.parse = void 0;
-  var parse_12 = parse;
-  Object.defineProperty(exports$1, "parse", { enumerable: true, get: function() {
-    return parse_12.parse;
+(function(n) {
+  Object.defineProperty(n, "__esModule", { value: !0 }), n.toHTML = n.format = n.clean = n.parse = void 0;
+  var t = de;
+  Object.defineProperty(n, "parse", { enumerable: !0, get: function() {
+    return t.parse;
   } });
-  var clean_1 = clean;
-  Object.defineProperty(exports$1, "clean", { enumerable: true, get: function() {
-    return clean_1.clean;
+  var e = ke;
+  Object.defineProperty(n, "clean", { enumerable: !0, get: function() {
+    return e.clean;
   } });
-  var format_1 = format;
-  Object.defineProperty(exports$1, "format", { enumerable: true, get: function() {
-    return format_1.format;
+  var i = Fe;
+  Object.defineProperty(n, "format", { enumerable: !0, get: function() {
+    return i.format;
   } });
-  var toHTML_1 = toHTML;
-  Object.defineProperty(exports$1, "toHTML", { enumerable: true, get: function() {
-    return toHTML_1.toHTML;
+  var s = Te;
+  Object.defineProperty(n, "toHTML", { enumerable: !0, get: function() {
+    return s.toHTML;
   } });
-})(dist);
-var TCPClient$1 = {};
-var varint = {};
-var __awaiter$e = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+})(Z);
+var W = {}, ee = {}, lo = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
 };
-Object.defineProperty(varint, "__esModule", { value: true });
-varint.writeVarInt = varint.readVarInt = void 0;
-function readVarInt(readByte) {
-  return __awaiter$e(this, void 0, void 0, function* () {
-    let numRead = 0;
-    let result = 0;
-    let read, value;
+Object.defineProperty(ee, "__esModule", { value: !0 });
+ee.writeVarInt = ee.readVarInt = void 0;
+function uo(n) {
+  return lo(this, void 0, void 0, function* () {
+    let t = 0, e = 0, i, s;
     do {
-      if (numRead > 4)
+      if (t > 4)
         throw new Error("VarInt exceeds data bounds");
-      read = yield readByte();
-      value = read & 127;
-      result |= value << 7 * numRead;
-      numRead++;
-      if (numRead > 5)
+      if (i = yield n(), s = i & 127, e |= s << 7 * t, t++, t > 5)
         throw new Error("VarInt is too big");
-    } while ((read & 128) != 0);
-    return result;
+    } while (i & 128);
+    return e;
   });
 }
-varint.readVarInt = readVarInt;
-function writeVarInt(value) {
-  let buf = Buffer.alloc(0);
+ee.readVarInt = uo;
+function fo(n) {
+  let t = Buffer.alloc(0);
   do {
-    let temp = value & 127;
-    value >>>= 7;
-    if (value != 0) {
-      temp |= 128;
-    }
-    buf = Buffer.concat([buf, Buffer.from([temp])]);
-  } while (value != 0);
-  return buf;
+    let e = n & 127;
+    n >>>= 7, n != 0 && (e |= 128), t = Buffer.concat([t, Buffer.from([e])]);
+  } while (n != 0);
+  return t;
 }
-varint.writeVarInt = writeVarInt;
-var __awaiter$d = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+ee.writeVarInt = fo;
+var _ = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, ho = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$e = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(TCPClient$1, "__esModule", { value: true });
-const net_1 = __importDefault$e(net__default);
-const events_1$2 = require$$1$1;
-const util_1$6 = require$$2;
-const varint_1$1 = varint;
-const encoder$4 = new util_1$6.TextEncoder();
-const decoder$3 = new util_1$6.TextDecoder("utf8");
-class TCPClient extends events_1$2.EventEmitter {
+Object.defineProperty(W, "__esModule", { value: !0 });
+const po = ho(wr), go = ue, Fr = Q, _t = ee, he = new Fr.TextEncoder(), pe = new Fr.TextDecoder("utf8");
+class yo extends go.EventEmitter {
   constructor() {
-    super(...arguments);
-    this.isConnected = false;
-    this.socket = null;
-    this.data = Buffer.alloc(0);
+    super(...arguments), this.isConnected = !1, this.socket = null, this.data = Buffer.alloc(0);
   }
-  connect(options) {
-    return new Promise((resolve, reject) => {
-      this.socket = net_1.default.createConnection(options);
-      const connectHandler = () => {
-        var _a, _b, _c, _d;
-        this.isConnected = true;
-        (_a = this.socket) === null || _a === void 0 ? void 0 : _a.removeListener("connect", connectHandler);
-        (_b = this.socket) === null || _b === void 0 ? void 0 : _b.removeListener("error", errorHandler);
-        (_c = this.socket) === null || _c === void 0 ? void 0 : _c.removeListener("timeout", timeoutHandler);
-        (_d = this.socket) === null || _d === void 0 ? void 0 : _d.removeListener("close", closeHandler);
-        resolve();
+  connect(t) {
+    return new Promise((e, i) => {
+      this.socket = po.default.createConnection(t);
+      const s = () => {
+        var c, l, u, d;
+        this.isConnected = !0, (c = this.socket) === null || c === void 0 || c.removeListener("connect", s), (l = this.socket) === null || l === void 0 || l.removeListener("error", r), (u = this.socket) === null || u === void 0 || u.removeListener("timeout", o), (d = this.socket) === null || d === void 0 || d.removeListener("close", a), e();
+      }, r = (c) => {
+        var l;
+        (l = this.socket) === null || l === void 0 || l.destroy(), i(c);
+      }, o = () => _(this, void 0, void 0, function* () {
+        var c;
+        (c = this.socket) === null || c === void 0 || c.destroy(), i(new Error("Server is offline or unreachable"));
+      }), a = (c) => {
+        var l;
+        this.isConnected = !1, (l = this.socket) === null || l === void 0 || l.destroy(), c || i(), this.emit("close");
       };
-      const errorHandler = (error) => {
-        var _a;
-        (_a = this.socket) === null || _a === void 0 ? void 0 : _a.destroy();
-        reject(error);
-      };
-      const timeoutHandler = () => __awaiter$d(this, void 0, void 0, function* () {
-        var _a;
-        (_a = this.socket) === null || _a === void 0 ? void 0 : _a.destroy();
-        reject(new Error("Server is offline or unreachable"));
-      });
-      const closeHandler = (hasError) => {
-        var _a;
-        this.isConnected = false;
-        (_a = this.socket) === null || _a === void 0 ? void 0 : _a.destroy();
-        if (!hasError)
-          reject();
-        this.emit("close");
-      };
-      this.socket.on("data", (data) => {
-        this.data = Buffer.concat([this.data, data]);
-        this.emit("data");
-      });
-      this.socket.on("connect", () => connectHandler());
-      this.socket.on("error", (error) => errorHandler(error));
-      this.socket.on("timeout", () => timeoutHandler());
-      this.socket.on("close", (hasError) => closeHandler(hasError));
+      this.socket.on("data", (c) => {
+        this.data = Buffer.concat([this.data, c]), this.emit("data");
+      }), this.socket.on("connect", () => s()), this.socket.on("error", (c) => r(c)), this.socket.on("timeout", () => o()), this.socket.on("close", (c) => a(c));
     });
   }
   readByte() {
     return this.readUInt8();
   }
-  writeByte(value) {
-    this.writeUInt8(value);
+  writeByte(t) {
+    this.writeUInt8(t);
   }
-  readBytes(length) {
-    return __awaiter$d(this, void 0, void 0, function* () {
-      yield this.ensureBufferedData(length);
-      const value = this.data.slice(0, length);
-      this.data = this.data.slice(length);
-      return value;
+  readBytes(t) {
+    return _(this, void 0, void 0, function* () {
+      yield this.ensureBufferedData(t);
+      const e = this.data.slice(0, t);
+      return this.data = this.data.slice(t), e;
     });
   }
-  writeBytes(data) {
-    this.data = Buffer.concat([this.data, data]);
+  writeBytes(t) {
+    this.data = Buffer.concat([this.data, t]);
   }
   readUInt8() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(1);
-      const value = this.data.readUInt8(0);
-      this.data = this.data.slice(1);
-      return value;
+      const t = this.data.readUInt8(0);
+      return this.data = this.data.slice(1), t;
     });
   }
-  writeUInt8(value) {
-    const data = Buffer.alloc(1);
-    data.writeUInt8(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt8(t) {
+    const e = Buffer.alloc(1);
+    e.writeUInt8(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt8() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(1);
-      const value = this.data.readInt8(0);
-      this.data = this.data.slice(1);
-      return value;
+      const t = this.data.readInt8(0);
+      return this.data = this.data.slice(1), t;
     });
   }
-  writeInt8(value) {
-    const data = Buffer.alloc(1);
-    data.writeInt8(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt8(t) {
+    const e = Buffer.alloc(1);
+    e.writeInt8(t), this.data = Buffer.concat([this.data, e]);
   }
   readUInt16BE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(2);
-      const value = this.data.readUInt16BE(0);
-      this.data = this.data.slice(2);
-      return value;
+      const t = this.data.readUInt16BE(0);
+      return this.data = this.data.slice(2), t;
     });
   }
-  writeUInt16BE(value) {
-    const data = Buffer.alloc(2);
-    data.writeUInt16BE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt16BE(t) {
+    const e = Buffer.alloc(2);
+    e.writeUInt16BE(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt16BE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(2);
-      const value = this.data.readInt16BE(0);
-      this.data = this.data.slice(2);
-      return value;
+      const t = this.data.readInt16BE(0);
+      return this.data = this.data.slice(2), t;
     });
   }
-  writeInt16BE(value) {
-    const data = Buffer.alloc(2);
-    data.writeInt16BE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt16BE(t) {
+    const e = Buffer.alloc(2);
+    e.writeInt16BE(t), this.data = Buffer.concat([this.data, e]);
   }
   readUInt16LE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(2);
-      const value = this.data.readUInt16LE(0);
-      this.data = this.data.slice(2);
-      return value;
+      const t = this.data.readUInt16LE(0);
+      return this.data = this.data.slice(2), t;
     });
   }
-  writeUInt16LE(value) {
-    const data = Buffer.alloc(2);
-    data.writeUInt16LE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt16LE(t) {
+    const e = Buffer.alloc(2);
+    e.writeUInt16LE(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt16LE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(2);
-      const value = this.data.readInt16LE(0);
-      this.data = this.data.slice(2);
-      return value;
+      const t = this.data.readInt16LE(0);
+      return this.data = this.data.slice(2), t;
     });
   }
-  writeInt16LE(value) {
-    const data = Buffer.alloc(2);
-    data.writeInt16LE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt16LE(t) {
+    const e = Buffer.alloc(2);
+    e.writeInt16LE(t), this.data = Buffer.concat([this.data, e]);
   }
   readUInt32BE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(4);
-      const value = this.data.readUInt32BE(0);
-      this.data = this.data.slice(4);
-      return value;
+      const t = this.data.readUInt32BE(0);
+      return this.data = this.data.slice(4), t;
     });
   }
-  writeUInt32BE(value) {
-    const data = Buffer.alloc(4);
-    data.writeUInt32BE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt32BE(t) {
+    const e = Buffer.alloc(4);
+    e.writeUInt32BE(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt32BE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(4);
-      const value = this.data.readInt32BE(0);
-      this.data = this.data.slice(4);
-      return value;
+      const t = this.data.readInt32BE(0);
+      return this.data = this.data.slice(4), t;
     });
   }
-  writeInt32BE(value) {
-    const data = Buffer.alloc(4);
-    data.writeInt32BE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt32BE(t) {
+    const e = Buffer.alloc(4);
+    e.writeInt32BE(t), this.data = Buffer.concat([this.data, e]);
   }
   readUInt32LE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(4);
-      const value = this.data.readUInt32LE(0);
-      this.data = this.data.slice(4);
-      return value;
+      const t = this.data.readUInt32LE(0);
+      return this.data = this.data.slice(4), t;
     });
   }
-  writeUInt32LE(value) {
-    const data = Buffer.alloc(4);
-    data.writeUInt32LE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt32LE(t) {
+    const e = Buffer.alloc(4);
+    e.writeUInt32LE(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt32LE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(4);
-      const value = this.data.readInt32LE(0);
-      this.data = this.data.slice(4);
-      return value;
+      const t = this.data.readInt32LE(0);
+      return this.data = this.data.slice(4), t;
     });
   }
-  writeInt32LE(value) {
-    const data = Buffer.alloc(4);
-    data.writeInt32LE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt32LE(t) {
+    const e = Buffer.alloc(4);
+    e.writeInt32LE(t), this.data = Buffer.concat([this.data, e]);
   }
   readUInt64BE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(8);
-      const value = this.data.readBigUInt64BE(0);
-      this.data = this.data.slice(8);
-      return value;
+      const t = this.data.readBigUInt64BE(0);
+      return this.data = this.data.slice(8), t;
     });
   }
-  writeUInt64BE(value) {
-    const data = Buffer.alloc(8);
-    data.writeBigUInt64BE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt64BE(t) {
+    const e = Buffer.alloc(8);
+    e.writeBigUInt64BE(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt64BE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(8);
-      const value = this.data.readBigInt64BE(0);
-      this.data = this.data.slice(8);
-      return value;
+      const t = this.data.readBigInt64BE(0);
+      return this.data = this.data.slice(8), t;
     });
   }
-  writeInt64BE(value) {
-    const data = Buffer.alloc(8);
-    data.writeBigInt64BE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt64BE(t) {
+    const e = Buffer.alloc(8);
+    e.writeBigInt64BE(t), this.data = Buffer.concat([this.data, e]);
   }
   readUInt64LE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(8);
-      const value = this.data.readBigUInt64LE(0);
-      this.data = this.data.slice(8);
-      return value;
+      const t = this.data.readBigUInt64LE(0);
+      return this.data = this.data.slice(8), t;
     });
   }
-  writeUInt64LE(value) {
-    const data = Buffer.alloc(8);
-    data.writeBigUInt64LE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt64LE(t) {
+    const e = Buffer.alloc(8);
+    e.writeBigUInt64LE(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt64LE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(8);
-      const value = this.data.readBigInt64LE(0);
-      this.data = this.data.slice(8);
-      return value;
+      const t = this.data.readBigInt64LE(0);
+      return this.data = this.data.slice(8), t;
     });
   }
-  writeInt64LE(value) {
-    const data = Buffer.alloc(8);
-    data.writeBigInt64LE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt64LE(t) {
+    const e = Buffer.alloc(8);
+    e.writeBigInt64LE(t), this.data = Buffer.concat([this.data, e]);
   }
   readFloatBE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(4);
-      const value = this.data.readFloatBE(0);
-      this.data = this.data.slice(4);
-      return value;
+      const t = this.data.readFloatBE(0);
+      return this.data = this.data.slice(4), t;
     });
   }
-  writeFloatBE(value) {
-    const data = Buffer.alloc(4);
-    data.writeFloatBE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeFloatBE(t) {
+    const e = Buffer.alloc(4);
+    e.writeFloatBE(t), this.data = Buffer.concat([this.data, e]);
   }
   readFloatLE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(4);
-      const value = this.data.readFloatLE(0);
-      this.data = this.data.slice(4);
-      return value;
+      const t = this.data.readFloatLE(0);
+      return this.data = this.data.slice(4), t;
     });
   }
-  writeFloatLE(value) {
-    const data = Buffer.alloc(4);
-    data.writeFloatLE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeFloatLE(t) {
+    const e = Buffer.alloc(4);
+    e.writeFloatLE(t), this.data = Buffer.concat([this.data, e]);
   }
   readDoubleBE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(8);
-      const value = this.data.readDoubleBE(0);
-      this.data = this.data.slice(8);
-      return value;
+      const t = this.data.readDoubleBE(0);
+      return this.data = this.data.slice(8), t;
     });
   }
-  writeDoubleBE(value) {
-    const data = Buffer.alloc(8);
-    data.writeDoubleBE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeDoubleBE(t) {
+    const e = Buffer.alloc(8);
+    e.writeDoubleBE(t), this.data = Buffer.concat([this.data, e]);
   }
   readDoubleLE() {
-    return __awaiter$d(this, void 0, void 0, function* () {
+    return _(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(8);
-      const value = this.data.readDoubleLE(0);
-      this.data = this.data.slice(8);
-      return value;
+      const t = this.data.readDoubleLE(0);
+      return this.data = this.data.slice(8), t;
     });
   }
-  writeDoubleLE(value) {
-    const data = Buffer.alloc(8);
-    data.writeDoubleLE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeDoubleLE(t) {
+    const e = Buffer.alloc(8);
+    e.writeDoubleLE(t), this.data = Buffer.concat([this.data, e]);
   }
   readVarInt() {
-    return __awaiter$d(this, void 0, void 0, function* () {
-      return yield (0, varint_1$1.readVarInt)(() => this.readByte());
+    return _(this, void 0, void 0, function* () {
+      return yield (0, _t.readVarInt)(() => this.readByte());
     });
   }
-  writeVarInt(value) {
-    this.writeBytes((0, varint_1$1.writeVarInt)(value));
+  writeVarInt(t) {
+    this.writeBytes((0, _t.writeVarInt)(t));
   }
-  readString(length) {
-    return __awaiter$d(this, void 0, void 0, function* () {
-      const data = yield this.readBytes(length);
-      return decoder$3.decode(data);
+  readString(t) {
+    return _(this, void 0, void 0, function* () {
+      const e = yield this.readBytes(t);
+      return pe.decode(e);
     });
   }
-  writeString(value) {
-    this.writeBytes(encoder$4.encode(value));
+  writeString(t) {
+    this.writeBytes(he.encode(t));
   }
   readStringVarInt() {
-    return __awaiter$d(this, void 0, void 0, function* () {
-      const length = yield this.readVarInt();
-      const data = yield this.readBytes(length);
-      return decoder$3.decode(data);
+    return _(this, void 0, void 0, function* () {
+      const t = yield this.readVarInt(), e = yield this.readBytes(t);
+      return pe.decode(e);
     });
   }
-  writeStringVarInt(value) {
-    const data = encoder$4.encode(value);
-    this.writeVarInt(data.byteLength);
-    this.writeBytes(data);
+  writeStringVarInt(t) {
+    const e = he.encode(t);
+    this.writeVarInt(e.byteLength), this.writeBytes(e);
   }
   readStringNT() {
-    return __awaiter$d(this, void 0, void 0, function* () {
-      let buf = Buffer.alloc(0);
-      let value;
-      while ((value = yield this.readByte()) !== 0) {
-        buf = Buffer.concat([buf, Buffer.from([value])]);
-      }
-      return decoder$3.decode(buf);
+    return _(this, void 0, void 0, function* () {
+      let t = Buffer.alloc(0), e;
+      for (; (e = yield this.readByte()) !== 0; )
+        t = Buffer.concat([t, Buffer.from([e])]);
+      return pe.decode(t);
     });
   }
-  writeStringNT(value) {
-    const data = encoder$4.encode(value);
-    this.writeBytes(data);
-    this.writeByte(0);
+  writeStringNT(t) {
+    const e = he.encode(t);
+    this.writeBytes(e), this.writeByte(0);
   }
-  writeStringBytes(value) {
-    this.writeBytes(encoder$4.encode(value));
+  writeStringBytes(t) {
+    this.writeBytes(he.encode(t));
   }
-  readStringUntil(byte) {
-    return __awaiter$d(this, void 0, void 0, function* () {
-      let buf = Buffer.alloc(0);
-      let value;
-      while ((value = yield this.readByte()) !== byte) {
-        buf = Buffer.concat([buf, Buffer.from([value])]);
-      }
-      return decoder$3.decode(buf);
+  readStringUntil(t) {
+    return _(this, void 0, void 0, function* () {
+      let e = Buffer.alloc(0), i;
+      for (; (i = yield this.readByte()) !== t; )
+        e = Buffer.concat([e, Buffer.from([i])]);
+      return pe.decode(e);
     });
   }
-  flush(prefixLength = true) {
-    if (!this.socket)
-      return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      var _a;
-      let buf = this.data;
-      if (prefixLength) {
-        buf = Buffer.concat([(0, varint_1$1.writeVarInt)(buf.byteLength), buf]);
-      }
-      (_a = this.socket) === null || _a === void 0 ? void 0 : _a.write(buf, (error) => {
-        if (error)
-          return reject(error);
-        resolve();
-      });
-      this.data = Buffer.alloc(0);
-    });
+  flush(t = !0) {
+    return this.socket ? new Promise((e, i) => {
+      var s;
+      let r = this.data;
+      t && (r = Buffer.concat([(0, _t.writeVarInt)(r.byteLength), r])), (s = this.socket) === null || s === void 0 || s.write(r, (o) => {
+        if (o)
+          return i(o);
+        e();
+      }), this.data = Buffer.alloc(0);
+    }) : Promise.resolve();
   }
   close() {
-    var _a, _b, _c;
-    (_a = this.socket) === null || _a === void 0 ? void 0 : _a.removeAllListeners();
-    (_b = this.socket) === null || _b === void 0 ? void 0 : _b.end();
-    (_c = this.socket) === null || _c === void 0 ? void 0 : _c.destroy();
+    var t, e, i;
+    (t = this.socket) === null || t === void 0 || t.removeAllListeners(), (e = this.socket) === null || e === void 0 || e.end(), (i = this.socket) === null || i === void 0 || i.destroy();
   }
-  ensureBufferedData(byteLength) {
-    return __awaiter$d(this, void 0, void 0, function* () {
-      if (this.data.byteLength >= byteLength)
-        return Promise.resolve();
-      return this._waitForData(byteLength);
+  ensureBufferedData(t) {
+    return _(this, void 0, void 0, function* () {
+      return this.data.byteLength >= t ? Promise.resolve() : this._waitForData(t);
     });
   }
-  _waitForData(byteLength = 1) {
-    return new Promise((resolve, reject) => {
-      const dataHandler = () => {
-        if (this.data.byteLength >= byteLength) {
-          this.removeListener("data", dataHandler);
-          this.removeListener("close", closeHandler);
-          resolve();
-        }
+  _waitForData(t = 1) {
+    return new Promise((e, i) => {
+      const s = () => {
+        this.data.byteLength >= t && (this.removeListener("data", s), this.removeListener("close", r), e());
+      }, r = () => {
+        this.removeListener("data", s), this.removeListener("close", r), i(new Error("Socket closed unexpectedly while waiting for data"));
       };
-      const closeHandler = () => {
-        this.removeListener("data", dataHandler);
-        this.removeListener("close", closeHandler);
-        reject(new Error("Socket closed unexpectedly while waiting for data"));
-      };
-      this.on("data", () => dataHandler());
-      this.on("close", () => closeHandler());
+      this.on("data", () => s()), this.on("close", () => r());
     });
   }
 }
-TCPClient$1.default = TCPClient;
-var srvRecord = {};
-var __importDefault$d = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
+W.default = yo;
+var z = {}, mo = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-Object.defineProperty(srvRecord, "__esModule", { value: true });
-srvRecord.resolveSRV = void 0;
-const dns_1 = __importDefault$d(require$$0$2);
-function resolveSRV(host, protocol = "tcp") {
-  return new Promise((resolve) => {
-    dns_1.default.resolveSrv(`_minecraft._${protocol}.${host}`, (error, addresses) => {
-      if (error || addresses.length < 1)
-        return resolve(null);
-      const address = addresses[0];
-      resolve({ host: address.name, port: address.port });
+Object.defineProperty(z, "__esModule", { value: !0 });
+z.resolveSRV = void 0;
+const vo = mo(gn);
+function wo(n, t = "tcp") {
+  return new Promise((e) => {
+    vo.default.resolveSrv(`_minecraft._${t}.${n}`, (i, s) => {
+      if (i || s.length < 1)
+        return e(null);
+      const r = s[0];
+      e({ host: r.name, port: r.port });
     });
   });
 }
-srvRecord.resolveSRV = resolveSRV;
-var __awaiter$c = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+z.resolveSRV = wo;
+var bo = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, kt = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$c = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(status$1, "__esModule", { value: true });
-status$1.status = void 0;
-const assert_1$b = __importDefault$c(require$$0$1);
-const crypto_1$2 = __importDefault$c(require$$1);
-const minecraft_motd_util_1$6 = dist;
-const TCPClient_1$7 = __importDefault$c(TCPClient$1);
-const srvRecord_1$7 = srvRecord;
-function status(host, port = 25565, options) {
-  host = host.trim();
-  (0, assert_1$b.default)(typeof host === "string", `Expected 'host' to be a 'string', got '${typeof host}'`);
-  (0, assert_1$b.default)(host.length > 1, `Expected 'host' to have a length greater than 0, got ${host.length}`);
-  (0, assert_1$b.default)(typeof port === "number", `Expected 'port' to be a 'number', got '${typeof port}'`);
-  (0, assert_1$b.default)(Number.isInteger(port), `Expected 'port' to be an integer, got '${port}'`);
-  (0, assert_1$b.default)(port >= 0, `Expected 'port' to be greater than or equal to 0, got '${port}'`);
-  (0, assert_1$b.default)(port <= 65535, `Expected 'port' to be less than or equal to 65535, got '${port}'`);
-  (0, assert_1$b.default)(typeof options === "object" || typeof options === "undefined", `Expected 'options' to be an 'object' or 'undefined', got '${typeof options}'`);
-  if (typeof options === "object") {
-    (0, assert_1$b.default)(typeof options.enableSRV === "boolean" || typeof options.enableSRV === "undefined", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof options.enableSRV}'`);
-    (0, assert_1$b.default)(typeof options.timeout === "number" || typeof options.timeout === "undefined", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof options.timeout}'`);
-    if (typeof options.timeout === "number") {
-      (0, assert_1$b.default)(Number.isInteger(options.timeout), `Expected 'options.timeout' to be an integer, got '${options.timeout}'`);
-      (0, assert_1$b.default)(options.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${options.timeout}'`);
-    }
-  }
-  return new Promise((resolve, reject) => __awaiter$c(this, void 0, void 0, function* () {
-    var _a, _b, _c, _d;
-    const socket = new TCPClient_1$7.default();
-    const timeout2 = setTimeout(() => {
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(new Error("Server is offline or unreachable"));
-    }, (_a = options === null || options === void 0 ? void 0 : options.timeout) !== null && _a !== void 0 ? _a : 1e3 * 5);
+Object.defineProperty(Pe, "__esModule", { value: !0 });
+Pe.status = void 0;
+const O = kt(D), Eo = kt(Le), ge = Z, _o = kt(W), xo = z;
+function So(n, t = 25565, e) {
+  return n = n.trim(), (0, O.default)(typeof n == "string", `Expected 'host' to be a 'string', got '${typeof n}'`), (0, O.default)(n.length > 1, `Expected 'host' to have a length greater than 0, got ${n.length}`), (0, O.default)(typeof t == "number", `Expected 'port' to be a 'number', got '${typeof t}'`), (0, O.default)(Number.isInteger(t), `Expected 'port' to be an integer, got '${t}'`), (0, O.default)(t >= 0, `Expected 'port' to be greater than or equal to 0, got '${t}'`), (0, O.default)(t <= 65535, `Expected 'port' to be less than or equal to 65535, got '${t}'`), (0, O.default)(typeof e == "object" || typeof e > "u", `Expected 'options' to be an 'object' or 'undefined', got '${typeof e}'`), typeof e == "object" && ((0, O.default)(typeof e.enableSRV == "boolean" || typeof e.enableSRV > "u", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof e.enableSRV}'`), (0, O.default)(typeof e.timeout == "number" || typeof e.timeout > "u", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof e.timeout}'`), typeof e.timeout == "number" && ((0, O.default)(Number.isInteger(e.timeout), `Expected 'options.timeout' to be an integer, got '${e.timeout}'`), (0, O.default)(e.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${e.timeout}'`))), new Promise((i, s) => bo(this, void 0, void 0, function* () {
+    var r, o, a, c;
+    const l = new _o.default(), u = setTimeout(() => {
+      l == null || l.close(), s(new Error("Server is offline or unreachable"));
+    }, (r = e == null ? void 0 : e.timeout) !== null && r !== void 0 ? r : 1e3 * 5);
     try {
-      let srvRecord2 = null;
-      if (typeof options === "undefined" || typeof options.enableSRV === "undefined" || options.enableSRV) {
-        srvRecord2 = yield (0, srvRecord_1$7.resolveSRV)(host);
-        if (srvRecord2) {
-          host = srvRecord2.host;
-          port = srvRecord2.port;
-        }
-      }
-      yield socket.connect({ host, port, timeout: (_b = options === null || options === void 0 ? void 0 : options.timeout) !== null && _b !== void 0 ? _b : 1e3 * 5 });
+      let d = null;
+      (typeof e > "u" || typeof e.enableSRV > "u" || e.enableSRV) && (d = yield (0, xo.resolveSRV)(n), d && (n = d.host, t = d.port)), yield l.connect({ host: n, port: t, timeout: (o = e == null ? void 0 : e.timeout) !== null && o !== void 0 ? o : 1e3 * 5 }), l.writeVarInt(0), l.writeVarInt(47), l.writeStringVarInt(n), l.writeUInt16BE(t), l.writeVarInt(1), yield l.flush(), l.writeVarInt(0), yield l.flush();
+      let f;
       {
-        socket.writeVarInt(0);
-        socket.writeVarInt(47);
-        socket.writeStringVarInt(host);
-        socket.writeUInt16BE(port);
-        socket.writeVarInt(1);
-        yield socket.flush();
+        const g = yield l.readVarInt();
+        yield l.ensureBufferedData(g);
+        const w = yield l.readVarInt();
+        if (w !== 0)
+          throw new Error("Expected server to send packet type 0x00, received " + w);
+        f = JSON.parse(yield l.readStringVarInt());
       }
+      const h = Eo.default.randomBytes(8).readBigInt64BE();
+      l.writeVarInt(1), l.writeInt64BE(h), yield l.flush();
+      const m = Date.now();
       {
-        socket.writeVarInt(0);
-        yield socket.flush();
-      }
-      let response;
-      {
-        const packetLength = yield socket.readVarInt();
-        yield socket.ensureBufferedData(packetLength);
-        const packetType = yield socket.readVarInt();
-        if (packetType !== 0)
-          throw new Error("Expected server to send packet type 0x00, received " + packetType);
-        response = JSON.parse(yield socket.readStringVarInt());
-      }
-      const payload = crypto_1$2.default.randomBytes(8).readBigInt64BE();
-      {
-        socket.writeVarInt(1);
-        socket.writeInt64BE(payload);
-        yield socket.flush();
-      }
-      const pingStart = Date.now();
-      {
-        const packetLength = yield socket.readVarInt();
-        yield socket.ensureBufferedData(packetLength);
-        const packetType = yield socket.readVarInt();
-        if (packetType !== 1)
-          throw new Error("Expected server to send packet type 0x01, received " + packetType);
-        const receivedPayload = yield socket.readInt64BE();
-        if (receivedPayload !== payload)
+        const g = yield l.readVarInt();
+        yield l.ensureBufferedData(g);
+        const w = yield l.readVarInt();
+        if (w !== 1)
+          throw new Error("Expected server to send packet type 0x01, received " + w);
+        if ((yield l.readInt64BE()) !== h)
           throw new Error("Ping payload did not match received payload");
       }
-      const motd = (0, minecraft_motd_util_1$6.parse)(response.description);
-      clearTimeout(timeout2);
-      socket.close();
-      resolve({
+      const v = (0, ge.parse)(f.description);
+      clearTimeout(u), l.close(), i({
         version: {
-          name: response.version.name,
-          protocol: response.version.protocol
+          name: f.version.name,
+          protocol: f.version.protocol
         },
         players: {
-          online: response.players.online,
-          max: response.players.max,
-          sample: (_c = response.players.sample) !== null && _c !== void 0 ? _c : null
+          online: f.players.online,
+          max: f.players.max,
+          sample: (a = f.players.sample) !== null && a !== void 0 ? a : null
         },
         motd: {
-          raw: (0, minecraft_motd_util_1$6.format)(motd),
-          clean: (0, minecraft_motd_util_1$6.clean)(motd),
-          html: (0, minecraft_motd_util_1$6.toHTML)(motd)
+          raw: (0, ge.format)(v),
+          clean: (0, ge.clean)(v),
+          html: (0, ge.toHTML)(v)
         },
-        favicon: (_d = response.favicon) !== null && _d !== void 0 ? _d : null,
-        srvRecord: srvRecord2,
-        roundTripLatency: Date.now() - pingStart
+        favicon: (c = f.favicon) !== null && c !== void 0 ? c : null,
+        srvRecord: d,
+        roundTripLatency: Date.now() - m
       });
-    } catch (e) {
-      clearTimeout(timeout2);
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(e);
+    } catch (d) {
+      clearTimeout(u), l == null || l.close(), s(d);
     }
   }));
 }
-status$1.status = status;
-var statusFE$1 = {};
-var __awaiter$b = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+Pe.status = So;
+var Ae = {}, Io = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, Tr = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$b = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(statusFE$1, "__esModule", { value: true });
-statusFE$1.statusFE = void 0;
-const assert_1$a = __importDefault$b(require$$0$1);
-const TCPClient_1$6 = __importDefault$b(TCPClient$1);
-const srvRecord_1$6 = srvRecord;
-function statusFE(host, port = 25565, options) {
-  process.emitWarning("Use of statusFE() has been deprecated since 5.2.0 in favor of a statusLegacy(). This method will be removed during the next major release of the minecraft-server-util library.", "DeprecationWarning");
-  host = host.trim();
-  (0, assert_1$a.default)(typeof host === "string", `Expected 'host' to be a 'string', got '${typeof host}'`);
-  (0, assert_1$a.default)(host.length > 1, `Expected 'host' to have a length greater than 0, got ${host.length}`);
-  (0, assert_1$a.default)(typeof port === "number", `Expected 'port' to be a 'number', got '${typeof port}'`);
-  (0, assert_1$a.default)(Number.isInteger(port), `Expected 'port' to be an integer, got '${port}'`);
-  (0, assert_1$a.default)(port >= 0, `Expected 'port' to be greater than or equal to 0, got '${port}'`);
-  (0, assert_1$a.default)(port <= 65535, `Expected 'port' to be less than or equal to 65535, got '${port}'`);
-  (0, assert_1$a.default)(typeof options === "object" || typeof options === "undefined", `Expected 'options' to be an 'object' or 'undefined', got '${typeof options}'`);
-  if (typeof options === "object") {
-    (0, assert_1$a.default)(typeof options.enableSRV === "boolean" || typeof options.enableSRV === "undefined", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof options.enableSRV}'`);
-    (0, assert_1$a.default)(typeof options.timeout === "number" || typeof options.timeout === "undefined", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof options.timeout}'`);
-    if (typeof options.timeout === "number") {
-      (0, assert_1$a.default)(Number.isInteger(options.timeout), `Expected 'options.timeout' to be an integer, got '${options.timeout}'`);
-      (0, assert_1$a.default)(options.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${options.timeout}'`);
-    }
-  }
-  return new Promise((resolve, reject) => __awaiter$b(this, void 0, void 0, function* () {
-    var _a, _b;
-    const socket = new TCPClient_1$6.default();
-    const timeout2 = setTimeout(() => {
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(new Error("Server is offline or unreachable"));
-    }, (_a = options === null || options === void 0 ? void 0 : options.timeout) !== null && _a !== void 0 ? _a : 1e3 * 5);
+Object.defineProperty(Ae, "__esModule", { value: !0 });
+Ae.statusFE = void 0;
+const C = Tr(D), $o = Tr(W), Bo = z;
+function Lo(n, t = 25565, e) {
+  return process.emitWarning("Use of statusFE() has been deprecated since 5.2.0 in favor of a statusLegacy(). This method will be removed during the next major release of the minecraft-server-util library.", "DeprecationWarning"), n = n.trim(), (0, C.default)(typeof n == "string", `Expected 'host' to be a 'string', got '${typeof n}'`), (0, C.default)(n.length > 1, `Expected 'host' to have a length greater than 0, got ${n.length}`), (0, C.default)(typeof t == "number", `Expected 'port' to be a 'number', got '${typeof t}'`), (0, C.default)(Number.isInteger(t), `Expected 'port' to be an integer, got '${t}'`), (0, C.default)(t >= 0, `Expected 'port' to be greater than or equal to 0, got '${t}'`), (0, C.default)(t <= 65535, `Expected 'port' to be less than or equal to 65535, got '${t}'`), (0, C.default)(typeof e == "object" || typeof e > "u", `Expected 'options' to be an 'object' or 'undefined', got '${typeof e}'`), typeof e == "object" && ((0, C.default)(typeof e.enableSRV == "boolean" || typeof e.enableSRV > "u", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof e.enableSRV}'`), (0, C.default)(typeof e.timeout == "number" || typeof e.timeout > "u", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof e.timeout}'`), typeof e.timeout == "number" && ((0, C.default)(Number.isInteger(e.timeout), `Expected 'options.timeout' to be an integer, got '${e.timeout}'`), (0, C.default)(e.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${e.timeout}'`))), new Promise((i, s) => Io(this, void 0, void 0, function* () {
+    var r, o;
+    const a = new $o.default(), c = setTimeout(() => {
+      a == null || a.close(), s(new Error("Server is offline or unreachable"));
+    }, (r = e == null ? void 0 : e.timeout) !== null && r !== void 0 ? r : 1e3 * 5);
     try {
-      let srvRecord2 = null;
-      if (typeof options === "undefined" || typeof options.enableSRV === "undefined" || options.enableSRV) {
-        srvRecord2 = yield (0, srvRecord_1$6.resolveSRV)(host);
-        if (srvRecord2) {
-          host = srvRecord2.host;
-          port = srvRecord2.port;
-        }
-      }
-      yield socket.connect({ host, port, timeout: (_b = options === null || options === void 0 ? void 0 : options.timeout) !== null && _b !== void 0 ? _b : 1e3 * 5 });
+      let l = null;
+      (typeof e > "u" || typeof e.enableSRV > "u" || e.enableSRV) && (l = yield (0, Bo.resolveSRV)(n), l && (n = l.host, t = l.port)), yield a.connect({ host: n, port: t, timeout: (o = e == null ? void 0 : e.timeout) !== null && o !== void 0 ? o : 1e3 * 5 }), a.writeByte(254), yield a.flush(!1);
       {
-        socket.writeByte(254);
-        yield socket.flush(false);
-      }
-      {
-        const packetID = yield socket.readByte();
-        if (packetID !== 255)
-          throw new Error("Expected server to send 0xFF kick packet, got " + packetID);
-        const packetLength = yield socket.readInt16BE();
-        const remainingData = yield socket.readBytes(packetLength * 2);
-        const [motd, onlinePlayersString, maxPlayersString] = remainingData.swap16().toString("utf16le").split("§");
-        socket.close();
-        clearTimeout(timeout2);
-        resolve({
+        const u = yield a.readByte();
+        if (u !== 255)
+          throw new Error("Expected server to send 0xFF kick packet, got " + u);
+        const d = yield a.readInt16BE(), f = yield a.readBytes(d * 2), [h, m, v] = f.swap16().toString("utf16le").split("§");
+        a.close(), clearTimeout(c), i({
           players: {
-            online: parseInt(onlinePlayersString),
-            max: parseInt(maxPlayersString)
+            online: parseInt(m),
+            max: parseInt(v)
           },
-          motd,
-          srvRecord: srvRecord2
+          motd: h,
+          srvRecord: l
         });
       }
-    } catch (e) {
-      clearTimeout(timeout2);
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(e);
+    } catch (l) {
+      clearTimeout(c), a == null || a.close(), s(l);
     }
   }));
 }
-statusFE$1.statusFE = statusFE;
-var statusFE01$1 = {};
-var __awaiter$a = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+Ae.statusFE = Lo;
+var Re = {}, Do = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, Ar = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$a = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(statusFE01$1, "__esModule", { value: true });
-statusFE01$1.statusFE01 = void 0;
-const assert_1$9 = __importDefault$a(require$$0$1);
-const minecraft_motd_util_1$5 = dist;
-const TCPClient_1$5 = __importDefault$a(TCPClient$1);
-const srvRecord_1$5 = srvRecord;
-function statusFE01(host, port = 25565, options) {
-  process.emitWarning("Use of statusFE01() has been deprecated since 5.2.0 in favor of a statusLegacy(). This method will be removed during the next major release of the minecraft-server-util library.", "DeprecationWarning");
-  host = host.trim();
-  (0, assert_1$9.default)(typeof host === "string", `Expected 'host' to be a 'string', got '${typeof host}'`);
-  (0, assert_1$9.default)(host.length > 1, `Expected 'host' to have a length greater than 0, got ${host.length}`);
-  (0, assert_1$9.default)(typeof port === "number", `Expected 'port' to be a 'number', got '${typeof port}'`);
-  (0, assert_1$9.default)(Number.isInteger(port), `Expected 'port' to be an integer, got '${port}'`);
-  (0, assert_1$9.default)(port >= 0, `Expected 'port' to be greater than or equal to 0, got '${port}'`);
-  (0, assert_1$9.default)(port <= 65535, `Expected 'port' to be less than or equal to 65535, got '${port}'`);
-  (0, assert_1$9.default)(typeof options === "object" || typeof options === "undefined", `Expected 'options' to be an 'object' or 'undefined', got '${typeof options}'`);
-  if (typeof options === "object") {
-    (0, assert_1$9.default)(typeof options.enableSRV === "boolean" || typeof options.enableSRV === "undefined", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof options.enableSRV}'`);
-    (0, assert_1$9.default)(typeof options.timeout === "number" || typeof options.timeout === "undefined", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof options.timeout}'`);
-    if (typeof options.timeout === "number") {
-      (0, assert_1$9.default)(Number.isInteger(options.timeout), `Expected 'options.timeout' to be an integer, got '${options.timeout}'`);
-      (0, assert_1$9.default)(options.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${options.timeout}'`);
-    }
-  }
-  return new Promise((resolve, reject) => __awaiter$a(this, void 0, void 0, function* () {
-    var _a, _b;
-    const socket = new TCPClient_1$5.default();
-    const timeout2 = setTimeout(() => {
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(new Error("Server is offline or unreachable"));
-    }, (_a = options === null || options === void 0 ? void 0 : options.timeout) !== null && _a !== void 0 ? _a : 1e3 * 5);
+Object.defineProperty(Re, "__esModule", { value: !0 });
+Re.statusFE01 = void 0;
+const j = Ar(D), ye = Z, Po = Ar(W), ko = z;
+function Fo(n, t = 25565, e) {
+  return process.emitWarning("Use of statusFE01() has been deprecated since 5.2.0 in favor of a statusLegacy(). This method will be removed during the next major release of the minecraft-server-util library.", "DeprecationWarning"), n = n.trim(), (0, j.default)(typeof n == "string", `Expected 'host' to be a 'string', got '${typeof n}'`), (0, j.default)(n.length > 1, `Expected 'host' to have a length greater than 0, got ${n.length}`), (0, j.default)(typeof t == "number", `Expected 'port' to be a 'number', got '${typeof t}'`), (0, j.default)(Number.isInteger(t), `Expected 'port' to be an integer, got '${t}'`), (0, j.default)(t >= 0, `Expected 'port' to be greater than or equal to 0, got '${t}'`), (0, j.default)(t <= 65535, `Expected 'port' to be less than or equal to 65535, got '${t}'`), (0, j.default)(typeof e == "object" || typeof e > "u", `Expected 'options' to be an 'object' or 'undefined', got '${typeof e}'`), typeof e == "object" && ((0, j.default)(typeof e.enableSRV == "boolean" || typeof e.enableSRV > "u", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof e.enableSRV}'`), (0, j.default)(typeof e.timeout == "number" || typeof e.timeout > "u", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof e.timeout}'`), typeof e.timeout == "number" && ((0, j.default)(Number.isInteger(e.timeout), `Expected 'options.timeout' to be an integer, got '${e.timeout}'`), (0, j.default)(e.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${e.timeout}'`))), new Promise((i, s) => Do(this, void 0, void 0, function* () {
+    var r, o;
+    const a = new Po.default(), c = setTimeout(() => {
+      a == null || a.close(), s(new Error("Server is offline or unreachable"));
+    }, (r = e == null ? void 0 : e.timeout) !== null && r !== void 0 ? r : 1e3 * 5);
     try {
-      let srvRecord2 = null;
-      if (typeof options === "undefined" || typeof options.enableSRV === "undefined" || options.enableSRV) {
-        srvRecord2 = yield (0, srvRecord_1$5.resolveSRV)(host);
-        if (srvRecord2) {
-          host = srvRecord2.host;
-          port = srvRecord2.port;
-        }
-      }
-      yield socket.connect({ host, port, timeout: (_b = options === null || options === void 0 ? void 0 : options.timeout) !== null && _b !== void 0 ? _b : 1e3 * 5 });
+      let l = null;
+      (typeof e > "u" || typeof e.enableSRV > "u" || e.enableSRV) && (l = yield (0, ko.resolveSRV)(n), l && (n = l.host, t = l.port)), yield a.connect({ host: n, port: t, timeout: (o = e == null ? void 0 : e.timeout) !== null && o !== void 0 ? o : 1e3 * 5 }), a.writeBytes(Uint8Array.from([254, 1])), yield a.flush(!1);
       {
-        socket.writeBytes(Uint8Array.from([254, 1]));
-        yield socket.flush(false);
-      }
-      {
-        const kickIdentifier = yield socket.readByte();
-        if (kickIdentifier !== 255)
-          throw new Error("Expected server to send 0xFF kick packet, got " + kickIdentifier);
-        const remainingLength = yield socket.readInt16BE();
-        const remainingData = yield socket.readBytes(remainingLength * 2);
-        const [protocolVersionString, version, motdString, onlinePlayersString, maxPlayersString] = remainingData.slice(6).swap16().toString("utf16le").split("\0");
-        const motd = (0, minecraft_motd_util_1$5.parse)(motdString);
-        socket.close();
-        clearTimeout(timeout2);
-        resolve({
-          protocolVersion: parseInt(protocolVersionString),
-          version,
+        const u = yield a.readByte();
+        if (u !== 255)
+          throw new Error("Expected server to send 0xFF kick packet, got " + u);
+        const d = yield a.readInt16BE(), f = yield a.readBytes(d * 2), [h, m, v, g, w] = f.slice(6).swap16().toString("utf16le").split("\0"), b = (0, ye.parse)(v);
+        a.close(), clearTimeout(c), i({
+          protocolVersion: parseInt(h),
+          version: m,
           players: {
-            online: parseInt(onlinePlayersString),
-            max: parseInt(maxPlayersString)
+            online: parseInt(g),
+            max: parseInt(w)
           },
           motd: {
-            raw: (0, minecraft_motd_util_1$5.format)(motd),
-            clean: (0, minecraft_motd_util_1$5.clean)(motd),
-            html: (0, minecraft_motd_util_1$5.toHTML)(motd)
+            raw: (0, ye.format)(b),
+            clean: (0, ye.clean)(b),
+            html: (0, ye.toHTML)(b)
           },
-          srvRecord: srvRecord2
+          srvRecord: l
         });
       }
-    } catch (e) {
-      clearTimeout(timeout2);
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(e);
+    } catch (l) {
+      clearTimeout(c), a == null || a.close(), s(l);
     }
   }));
 }
-statusFE01$1.statusFE01 = statusFE01;
-var statusFE01FA$1 = {};
-var __awaiter$9 = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+Re.statusFE01 = Fo;
+var Oe = {}, To = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, Rr = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$9 = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(statusFE01FA$1, "__esModule", { value: true });
-statusFE01FA$1.statusFE01FA = void 0;
-const assert_1$8 = __importDefault$9(require$$0$1);
-const minecraft_motd_util_1$4 = dist;
-const util_1$5 = require$$2;
-const TCPClient_1$4 = __importDefault$9(TCPClient$1);
-const srvRecord_1$4 = srvRecord;
-const encoder$3 = new util_1$5.TextEncoder();
-function statusFE01FA(host, port = 25565, options) {
-  process.emitWarning("Use of statusFE01FA() has been deprecated since 5.2.0 in favor of a statusLegacy(). This method will be removed during the next major release of the minecraft-server-util library.", "DeprecationWarning");
-  host = host.trim();
-  (0, assert_1$8.default)(typeof host === "string", `Expected 'host' to be a 'string', got '${typeof host}'`);
-  (0, assert_1$8.default)(host.length > 1, `Expected 'host' to have a length greater than 0, got ${host.length}`);
-  (0, assert_1$8.default)(typeof port === "number", `Expected 'port' to be a 'number', got '${typeof port}'`);
-  (0, assert_1$8.default)(Number.isInteger(port), `Expected 'port' to be an integer, got '${port}'`);
-  (0, assert_1$8.default)(port >= 0, `Expected 'port' to be greater than or equal to 0, got '${port}'`);
-  (0, assert_1$8.default)(port <= 65535, `Expected 'port' to be less than or equal to 65535, got '${port}'`);
-  (0, assert_1$8.default)(typeof options === "object" || typeof options === "undefined", `Expected 'options' to be an 'object' or 'undefined', got '${typeof options}'`);
-  if (typeof options === "object") {
-    (0, assert_1$8.default)(typeof options.enableSRV === "boolean" || typeof options.enableSRV === "undefined", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof options.enableSRV}'`);
-    (0, assert_1$8.default)(typeof options.timeout === "number" || typeof options.timeout === "undefined", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof options.timeout}'`);
-    if (typeof options.timeout === "number") {
-      (0, assert_1$8.default)(Number.isInteger(options.timeout), `Expected 'options.timeout' to be an integer, got '${options.timeout}'`);
-      (0, assert_1$8.default)(options.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${options.timeout}'`);
-    }
-  }
-  return new Promise((resolve, reject) => __awaiter$9(this, void 0, void 0, function* () {
-    var _a, _b;
-    const socket = new TCPClient_1$4.default();
-    const timeout2 = setTimeout(() => {
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(new Error("Server is offline or unreachable"));
-    }, (_a = options === null || options === void 0 ? void 0 : options.timeout) !== null && _a !== void 0 ? _a : 1e3 * 5);
+Object.defineProperty(Oe, "__esModule", { value: !0 });
+Oe.statusFE01FA = void 0;
+const N = Rr(D), me = Z, Ao = Q, Ro = Rr(W), Oo = z, Co = new Ao.TextEncoder();
+function jo(n, t = 25565, e) {
+  return process.emitWarning("Use of statusFE01FA() has been deprecated since 5.2.0 in favor of a statusLegacy(). This method will be removed during the next major release of the minecraft-server-util library.", "DeprecationWarning"), n = n.trim(), (0, N.default)(typeof n == "string", `Expected 'host' to be a 'string', got '${typeof n}'`), (0, N.default)(n.length > 1, `Expected 'host' to have a length greater than 0, got ${n.length}`), (0, N.default)(typeof t == "number", `Expected 'port' to be a 'number', got '${typeof t}'`), (0, N.default)(Number.isInteger(t), `Expected 'port' to be an integer, got '${t}'`), (0, N.default)(t >= 0, `Expected 'port' to be greater than or equal to 0, got '${t}'`), (0, N.default)(t <= 65535, `Expected 'port' to be less than or equal to 65535, got '${t}'`), (0, N.default)(typeof e == "object" || typeof e > "u", `Expected 'options' to be an 'object' or 'undefined', got '${typeof e}'`), typeof e == "object" && ((0, N.default)(typeof e.enableSRV == "boolean" || typeof e.enableSRV > "u", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof e.enableSRV}'`), (0, N.default)(typeof e.timeout == "number" || typeof e.timeout > "u", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof e.timeout}'`), typeof e.timeout == "number" && ((0, N.default)(Number.isInteger(e.timeout), `Expected 'options.timeout' to be an integer, got '${e.timeout}'`), (0, N.default)(e.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${e.timeout}'`))), new Promise((i, s) => To(this, void 0, void 0, function* () {
+    var r, o;
+    const a = new Ro.default(), c = setTimeout(() => {
+      a == null || a.close(), s(new Error("Server is offline or unreachable"));
+    }, (r = e == null ? void 0 : e.timeout) !== null && r !== void 0 ? r : 1e3 * 5);
     try {
-      let srvRecord2 = null;
-      if (typeof options === "undefined" || typeof options.enableSRV === "undefined" || options.enableSRV) {
-        srvRecord2 = yield (0, srvRecord_1$4.resolveSRV)(host);
-        if (srvRecord2) {
-          host = srvRecord2.host;
-          port = srvRecord2.port;
-        }
-      }
-      yield socket.connect({ host, port, timeout: (_b = options === null || options === void 0 ? void 0 : options.timeout) !== null && _b !== void 0 ? _b : 1e3 * 5 });
+      let l = null;
+      (typeof e > "u" || typeof e.enableSRV > "u" || e.enableSRV) && (l = yield (0, Oo.resolveSRV)(n), l && (n = l.host, t = l.port)), yield a.connect({ host: n, port: t, timeout: (o = e == null ? void 0 : e.timeout) !== null && o !== void 0 ? o : 1e3 * 5 });
       {
-        const hostBytes = encoder$3.encode(host);
-        socket.writeBytes(Uint8Array.from([254, 1, 250]));
-        socket.writeInt16BE(11);
-        socket.writeStringBytes("MC|PingHost");
-        socket.writeInt16BE(7 + hostBytes.byteLength);
-        socket.writeByte(74);
-        socket.writeInt16BE(hostBytes.length);
-        socket.writeBytes(hostBytes);
-        socket.writeInt16BE(port);
-        yield socket.flush(false);
+        const u = Co.encode(n);
+        a.writeBytes(Uint8Array.from([254, 1, 250])), a.writeInt16BE(11), a.writeStringBytes("MC|PingHost"), a.writeInt16BE(7 + u.byteLength), a.writeByte(74), a.writeInt16BE(u.length), a.writeBytes(u), a.writeInt16BE(t), yield a.flush(!1);
       }
       {
-        const kickIdentifier = yield socket.readByte();
-        if (kickIdentifier !== 255)
-          throw new Error("Expected server to send 0xFF kick packet, got " + kickIdentifier);
-        const remainingLength = yield socket.readInt16BE();
-        const remainingData = yield socket.readBytes(remainingLength * 2);
-        const [protocolVersionString, version, motdString, onlinePlayersString, maxPlayersString] = remainingData.slice(6).swap16().toString("utf16le").split("\0");
-        const motd = (0, minecraft_motd_util_1$4.parse)(motdString);
-        socket.close();
-        clearTimeout(timeout2);
-        resolve({
-          protocolVersion: parseInt(protocolVersionString),
-          version,
+        const u = yield a.readByte();
+        if (u !== 255)
+          throw new Error("Expected server to send 0xFF kick packet, got " + u);
+        const d = yield a.readInt16BE(), f = yield a.readBytes(d * 2), [h, m, v, g, w] = f.slice(6).swap16().toString("utf16le").split("\0"), b = (0, me.parse)(v);
+        a.close(), clearTimeout(c), i({
+          protocolVersion: parseInt(h),
+          version: m,
           players: {
-            online: parseInt(onlinePlayersString),
-            max: parseInt(maxPlayersString)
+            online: parseInt(g),
+            max: parseInt(w)
           },
           motd: {
-            raw: (0, minecraft_motd_util_1$4.format)(motd),
-            clean: (0, minecraft_motd_util_1$4.clean)(motd),
-            html: (0, minecraft_motd_util_1$4.toHTML)(motd)
+            raw: (0, me.format)(b),
+            clean: (0, me.clean)(b),
+            html: (0, me.toHTML)(b)
           },
-          srvRecord: srvRecord2
+          srvRecord: l
         });
       }
-    } catch (e) {
-      clearTimeout(timeout2);
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(e);
+    } catch (l) {
+      clearTimeout(c), a == null || a.close(), s(l);
     }
   }));
 }
-statusFE01FA$1.statusFE01FA = statusFE01FA;
-var statusLegacy$1 = {};
-var __awaiter$8 = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+Oe.statusFE01FA = jo;
+var Ce = {}, No = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, Or = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$8 = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(statusLegacy$1, "__esModule", { value: true });
-statusLegacy$1.statusLegacy = void 0;
-const assert_1$7 = __importDefault$8(require$$0$1);
-const minecraft_motd_util_1$3 = dist;
-const util_1$4 = require$$2;
-const TCPClient_1$3 = __importDefault$8(TCPClient$1);
-const srvRecord_1$3 = srvRecord;
-const decoder$2 = new util_1$4.TextDecoder("utf-16be");
-function statusLegacy(host, port = 25565, options) {
-  host = host.trim();
-  (0, assert_1$7.default)(typeof host === "string", `Expected 'host' to be a 'string', got '${typeof host}'`);
-  (0, assert_1$7.default)(host.length > 1, `Expected 'host' to have a length greater than 0, got ${host.length}`);
-  (0, assert_1$7.default)(typeof port === "number", `Expected 'port' to be a 'number', got '${typeof port}'`);
-  (0, assert_1$7.default)(Number.isInteger(port), `Expected 'port' to be an integer, got '${port}'`);
-  (0, assert_1$7.default)(port >= 0, `Expected 'port' to be greater than or equal to 0, got '${port}'`);
-  (0, assert_1$7.default)(port <= 65535, `Expected 'port' to be less than or equal to 65535, got '${port}'`);
-  (0, assert_1$7.default)(typeof options === "object" || typeof options === "undefined", `Expected 'options' to be an 'object' or 'undefined', got '${typeof options}'`);
-  if (typeof options === "object") {
-    (0, assert_1$7.default)(typeof options.enableSRV === "boolean" || typeof options.enableSRV === "undefined", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof options.enableSRV}'`);
-    (0, assert_1$7.default)(typeof options.timeout === "number" || typeof options.timeout === "undefined", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof options.timeout}'`);
-    if (typeof options.timeout === "number") {
-      (0, assert_1$7.default)(Number.isInteger(options.timeout), `Expected 'options.timeout' to be an integer, got '${options.timeout}'`);
-      (0, assert_1$7.default)(options.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${options.timeout}'`);
-    }
-  }
-  return new Promise((resolve, reject) => __awaiter$8(this, void 0, void 0, function* () {
-    var _a, _b;
-    const socket = new TCPClient_1$3.default();
-    const timeout2 = setTimeout(() => {
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(new Error("Server is offline or unreachable"));
-    }, (_a = options === null || options === void 0 ? void 0 : options.timeout) !== null && _a !== void 0 ? _a : 1e3 * 5);
+Object.defineProperty(Ce, "__esModule", { value: !0 });
+Ce.statusLegacy = void 0;
+const M = Or(D), ve = Z, Mo = Q, Vo = Or(W), Uo = z, qo = new Mo.TextDecoder("utf-16be");
+function zo(n, t = 25565, e) {
+  return n = n.trim(), (0, M.default)(typeof n == "string", `Expected 'host' to be a 'string', got '${typeof n}'`), (0, M.default)(n.length > 1, `Expected 'host' to have a length greater than 0, got ${n.length}`), (0, M.default)(typeof t == "number", `Expected 'port' to be a 'number', got '${typeof t}'`), (0, M.default)(Number.isInteger(t), `Expected 'port' to be an integer, got '${t}'`), (0, M.default)(t >= 0, `Expected 'port' to be greater than or equal to 0, got '${t}'`), (0, M.default)(t <= 65535, `Expected 'port' to be less than or equal to 65535, got '${t}'`), (0, M.default)(typeof e == "object" || typeof e > "u", `Expected 'options' to be an 'object' or 'undefined', got '${typeof e}'`), typeof e == "object" && ((0, M.default)(typeof e.enableSRV == "boolean" || typeof e.enableSRV > "u", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof e.enableSRV}'`), (0, M.default)(typeof e.timeout == "number" || typeof e.timeout > "u", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof e.timeout}'`), typeof e.timeout == "number" && ((0, M.default)(Number.isInteger(e.timeout), `Expected 'options.timeout' to be an integer, got '${e.timeout}'`), (0, M.default)(e.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${e.timeout}'`))), new Promise((i, s) => No(this, void 0, void 0, function* () {
+    var r, o;
+    const a = new Vo.default(), c = setTimeout(() => {
+      a == null || a.close(), s(new Error("Server is offline or unreachable"));
+    }, (r = e == null ? void 0 : e.timeout) !== null && r !== void 0 ? r : 1e3 * 5);
     try {
-      let srvRecord2 = null;
-      if (typeof options === "undefined" || typeof options.enableSRV === "undefined" || options.enableSRV) {
-        srvRecord2 = yield (0, srvRecord_1$3.resolveSRV)(host);
-        if (srvRecord2) {
-          host = srvRecord2.host;
-          port = srvRecord2.port;
-        }
-      }
-      yield socket.connect({ host, port, timeout: (_b = options === null || options === void 0 ? void 0 : options.timeout) !== null && _b !== void 0 ? _b : 1e3 * 5 });
+      let l = null;
+      (typeof e > "u" || typeof e.enableSRV > "u" || e.enableSRV) && (l = yield (0, Uo.resolveSRV)(n), l && (n = l.host, t = l.port)), yield a.connect({ host: n, port: t, timeout: (o = e == null ? void 0 : e.timeout) !== null && o !== void 0 ? o : 1e3 * 5 }), a.writeBytes(Uint8Array.from([254, 1])), yield a.flush(!1);
+      let u, d, f, h, m;
       {
-        socket.writeBytes(Uint8Array.from([254, 1]));
-        yield socket.flush(false);
-      }
-      let protocolVersion;
-      let versionName;
-      let rawMOTD;
-      let onlinePlayers;
-      let maxPlayers;
-      {
-        const packetType = yield socket.readByte();
-        if (packetType !== 255)
+        if ((yield a.readByte()) !== 255)
           throw new Error("Packet returned from server was unexpected type");
-        const length = yield socket.readUInt16BE();
-        const data = decoder$2.decode(yield socket.readBytes(length * 2));
-        if (data[0] === "§" || data[1] === "1") {
-          const split = data.split("\0");
-          protocolVersion = parseInt(split[1]);
-          versionName = split[2];
-          rawMOTD = split[3];
-          onlinePlayers = parseInt(split[4]);
-          maxPlayers = parseInt(split[5]);
+        const w = yield a.readUInt16BE(), b = qo.decode(yield a.readBytes(w * 2));
+        if (b[0] === "§" || b[1] === "1") {
+          const $ = b.split("\0");
+          u = parseInt($[1]), d = $[2], f = $[3], h = parseInt($[4]), m = parseInt($[5]);
         } else {
-          const split = data.split("§");
-          protocolVersion = null;
-          versionName = null;
-          rawMOTD = split[0];
-          onlinePlayers = parseInt(split[1]);
-          maxPlayers = parseInt(split[2]);
+          const $ = b.split("§");
+          u = null, d = null, f = $[0], h = parseInt($[1]), m = parseInt($[2]);
         }
       }
-      socket.close();
-      clearTimeout(timeout2);
-      const motd = (0, minecraft_motd_util_1$3.parse)(rawMOTD);
-      resolve({
-        version: versionName === null && protocolVersion === null ? null : {
-          name: versionName,
-          protocol: protocolVersion
+      a.close(), clearTimeout(c);
+      const v = (0, ve.parse)(f);
+      i({
+        version: d === null && u === null ? null : {
+          name: d,
+          protocol: u
         },
         players: {
-          online: onlinePlayers,
-          max: maxPlayers
+          online: h,
+          max: m
         },
         motd: {
-          raw: (0, minecraft_motd_util_1$3.format)(motd),
-          clean: (0, minecraft_motd_util_1$3.clean)(motd),
-          html: (0, minecraft_motd_util_1$3.toHTML)(motd)
+          raw: (0, ve.format)(v),
+          clean: (0, ve.clean)(v),
+          html: (0, ve.toHTML)(v)
         },
-        srvRecord: srvRecord2
+        srvRecord: l
       });
-    } catch (e) {
-      clearTimeout(timeout2);
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(e);
+    } catch (l) {
+      clearTimeout(c), a == null || a.close(), s(l);
     }
   }));
 }
-statusLegacy$1.statusLegacy = statusLegacy;
-var statusBedrock$1 = {};
-var UDPClient$1 = {};
-var __awaiter$7 = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+Ce.statusLegacy = zo;
+var je = {}, fe = {}, x = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, Ho = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$7 = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(UDPClient$1, "__esModule", { value: true });
-const dgram_1$1 = __importDefault$7(require$$0__default);
-const events_1$1 = require$$1$1;
-const util_1$3 = require$$2;
-const varint_1 = varint;
-const encoder$2 = new util_1$3.TextEncoder();
-const decoder$1 = new util_1$3.TextDecoder("utf-8");
-class UDPClient extends events_1$1.EventEmitter {
-  constructor(host, port) {
-    super();
-    this.data = Buffer.alloc(0);
-    this.host = host;
-    this.port = port;
-    this.socket = dgram_1$1.default.createSocket("udp4");
-    this.socket.on("message", (data) => {
-      this.data = Buffer.concat([this.data, data]);
-      this.emit("data");
+Object.defineProperty(fe, "__esModule", { value: !0 });
+const Wo = Ho(br), Jo = ue, Cr = Q, xt = ee, we = new Cr.TextEncoder(), Go = new Cr.TextDecoder("utf-8");
+class Ko extends Jo.EventEmitter {
+  constructor(t, e) {
+    super(), this.data = Buffer.alloc(0), this.host = t, this.port = e, this.socket = Wo.default.createSocket("udp4"), this.socket.on("message", (i) => {
+      this.data = Buffer.concat([this.data, i]), this.emit("data");
     });
   }
   readByte() {
     return this.readUInt8();
   }
-  writeByte(value) {
-    this.writeUInt8(value);
+  writeByte(t) {
+    this.writeUInt8(t);
   }
-  readBytes(length) {
-    return __awaiter$7(this, void 0, void 0, function* () {
-      yield this.ensureBufferedData(length);
-      const value = this.data.slice(0, length);
-      this.data = this.data.slice(length);
-      return value;
+  readBytes(t) {
+    return x(this, void 0, void 0, function* () {
+      yield this.ensureBufferedData(t);
+      const e = this.data.slice(0, t);
+      return this.data = this.data.slice(t), e;
     });
   }
-  writeBytes(data) {
-    this.data = Buffer.concat([this.data, data]);
+  writeBytes(t) {
+    this.data = Buffer.concat([this.data, t]);
   }
   readUInt8() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(1);
-      const value = this.data.readUInt8(0);
-      this.data = this.data.slice(1);
-      return value;
+      const t = this.data.readUInt8(0);
+      return this.data = this.data.slice(1), t;
     });
   }
-  writeUInt8(value) {
-    const data = Buffer.alloc(1);
-    data.writeUInt8(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt8(t) {
+    const e = Buffer.alloc(1);
+    e.writeUInt8(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt8() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(1);
-      const value = this.data.readInt8(0);
-      this.data = this.data.slice(1);
-      return value;
+      const t = this.data.readInt8(0);
+      return this.data = this.data.slice(1), t;
     });
   }
-  writeInt8(value) {
-    const data = Buffer.alloc(1);
-    data.writeInt8(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt8(t) {
+    const e = Buffer.alloc(1);
+    e.writeInt8(t), this.data = Buffer.concat([this.data, e]);
   }
   readUInt16BE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(2);
-      const value = this.data.readUInt16BE(0);
-      this.data = this.data.slice(2);
-      return value;
+      const t = this.data.readUInt16BE(0);
+      return this.data = this.data.slice(2), t;
     });
   }
-  writeUInt16BE(value) {
-    const data = Buffer.alloc(2);
-    data.writeUInt16BE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt16BE(t) {
+    const e = Buffer.alloc(2);
+    e.writeUInt16BE(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt16BE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(2);
-      const value = this.data.readInt16BE(0);
-      this.data = this.data.slice(2);
-      return value;
+      const t = this.data.readInt16BE(0);
+      return this.data = this.data.slice(2), t;
     });
   }
-  writeInt16BE(value) {
-    const data = Buffer.alloc(2);
-    data.writeInt16BE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt16BE(t) {
+    const e = Buffer.alloc(2);
+    e.writeInt16BE(t), this.data = Buffer.concat([this.data, e]);
   }
   readUInt16LE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(2);
-      const value = this.data.readUInt16LE(0);
-      this.data = this.data.slice(2);
-      return value;
+      const t = this.data.readUInt16LE(0);
+      return this.data = this.data.slice(2), t;
     });
   }
-  writeUInt16LE(value) {
-    const data = Buffer.alloc(2);
-    data.writeUInt16LE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt16LE(t) {
+    const e = Buffer.alloc(2);
+    e.writeUInt16LE(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt16LE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(2);
-      const value = this.data.readInt16LE(0);
-      this.data = this.data.slice(2);
-      return value;
+      const t = this.data.readInt16LE(0);
+      return this.data = this.data.slice(2), t;
     });
   }
-  writeInt16LE(value) {
-    const data = Buffer.alloc(2);
-    data.writeInt16LE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt16LE(t) {
+    const e = Buffer.alloc(2);
+    e.writeInt16LE(t), this.data = Buffer.concat([this.data, e]);
   }
   readUInt32BE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(4);
-      const value = this.data.readUInt32BE(0);
-      this.data = this.data.slice(4);
-      return value;
+      const t = this.data.readUInt32BE(0);
+      return this.data = this.data.slice(4), t;
     });
   }
-  writeUInt32BE(value) {
-    const data = Buffer.alloc(4);
-    data.writeUInt32BE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt32BE(t) {
+    const e = Buffer.alloc(4);
+    e.writeUInt32BE(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt32BE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(4);
-      const value = this.data.readInt32BE(0);
-      this.data = this.data.slice(4);
-      return value;
+      const t = this.data.readInt32BE(0);
+      return this.data = this.data.slice(4), t;
     });
   }
-  writeInt32BE(value) {
-    const data = Buffer.alloc(4);
-    data.writeInt32BE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt32BE(t) {
+    const e = Buffer.alloc(4);
+    e.writeInt32BE(t), this.data = Buffer.concat([this.data, e]);
   }
   readUInt32LE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(4);
-      const value = this.data.readUInt32LE(0);
-      this.data = this.data.slice(4);
-      return value;
+      const t = this.data.readUInt32LE(0);
+      return this.data = this.data.slice(4), t;
     });
   }
-  writeUInt32LE(value) {
-    const data = Buffer.alloc(4);
-    data.writeUInt32LE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt32LE(t) {
+    const e = Buffer.alloc(4);
+    e.writeUInt32LE(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt32LE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(4);
-      const value = this.data.readInt32LE(0);
-      this.data = this.data.slice(4);
-      return value;
+      const t = this.data.readInt32LE(0);
+      return this.data = this.data.slice(4), t;
     });
   }
-  writeInt32LE(value) {
-    const data = Buffer.alloc(4);
-    data.writeInt32LE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt32LE(t) {
+    const e = Buffer.alloc(4);
+    e.writeInt32LE(t), this.data = Buffer.concat([this.data, e]);
   }
   readUInt64BE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(8);
-      const value = this.data.readBigUInt64BE(0);
-      this.data = this.data.slice(8);
-      return value;
+      const t = this.data.readBigUInt64BE(0);
+      return this.data = this.data.slice(8), t;
     });
   }
-  writeUInt64BE(value) {
-    const data = Buffer.alloc(8);
-    data.writeBigUInt64BE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt64BE(t) {
+    const e = Buffer.alloc(8);
+    e.writeBigUInt64BE(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt64BE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(8);
-      const value = this.data.readBigInt64BE(0);
-      this.data = this.data.slice(8);
-      return value;
+      const t = this.data.readBigInt64BE(0);
+      return this.data = this.data.slice(8), t;
     });
   }
-  writeInt64BE(value) {
-    const data = Buffer.alloc(8);
-    data.writeBigInt64BE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt64BE(t) {
+    const e = Buffer.alloc(8);
+    e.writeBigInt64BE(t), this.data = Buffer.concat([this.data, e]);
   }
   readUInt64LE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(8);
-      const value = this.data.readBigUInt64LE(0);
-      this.data = this.data.slice(8);
-      return value;
+      const t = this.data.readBigUInt64LE(0);
+      return this.data = this.data.slice(8), t;
     });
   }
-  writeUInt64LE(value) {
-    const data = Buffer.alloc(8);
-    data.writeBigUInt64LE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeUInt64LE(t) {
+    const e = Buffer.alloc(8);
+    e.writeBigUInt64LE(t), this.data = Buffer.concat([this.data, e]);
   }
   readInt64LE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(8);
-      const value = this.data.readBigInt64LE(0);
-      this.data = this.data.slice(8);
-      return value;
+      const t = this.data.readBigInt64LE(0);
+      return this.data = this.data.slice(8), t;
     });
   }
-  writeInt64LE(value) {
-    const data = Buffer.alloc(8);
-    data.writeBigInt64LE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeInt64LE(t) {
+    const e = Buffer.alloc(8);
+    e.writeBigInt64LE(t), this.data = Buffer.concat([this.data, e]);
   }
   readFloatBE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(4);
-      const value = this.data.readFloatBE(0);
-      this.data = this.data.slice(4);
-      return value;
+      const t = this.data.readFloatBE(0);
+      return this.data = this.data.slice(4), t;
     });
   }
-  writeFloatBE(value) {
-    const data = Buffer.alloc(4);
-    data.writeFloatBE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeFloatBE(t) {
+    const e = Buffer.alloc(4);
+    e.writeFloatBE(t), this.data = Buffer.concat([this.data, e]);
   }
   readFloatLE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(4);
-      const value = this.data.readFloatLE(0);
-      this.data = this.data.slice(4);
-      return value;
+      const t = this.data.readFloatLE(0);
+      return this.data = this.data.slice(4), t;
     });
   }
-  writeFloatLE(value) {
-    const data = Buffer.alloc(4);
-    data.writeFloatLE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeFloatLE(t) {
+    const e = Buffer.alloc(4);
+    e.writeFloatLE(t), this.data = Buffer.concat([this.data, e]);
   }
   readDoubleBE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(8);
-      const value = this.data.readDoubleBE(0);
-      this.data = this.data.slice(8);
-      return value;
+      const t = this.data.readDoubleBE(0);
+      return this.data = this.data.slice(8), t;
     });
   }
-  writeDoubleBE(value) {
-    const data = Buffer.alloc(8);
-    data.writeDoubleBE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeDoubleBE(t) {
+    const e = Buffer.alloc(8);
+    e.writeDoubleBE(t), this.data = Buffer.concat([this.data, e]);
   }
   readDoubleLE() {
-    return __awaiter$7(this, void 0, void 0, function* () {
+    return x(this, void 0, void 0, function* () {
       yield this.ensureBufferedData(8);
-      const value = this.data.readDoubleLE(0);
-      this.data = this.data.slice(8);
-      return value;
+      const t = this.data.readDoubleLE(0);
+      return this.data = this.data.slice(8), t;
     });
   }
-  writeDoubleLE(value) {
-    const data = Buffer.alloc(8);
-    data.writeDoubleLE(value);
-    this.data = Buffer.concat([this.data, data]);
+  writeDoubleLE(t) {
+    const e = Buffer.alloc(8);
+    e.writeDoubleLE(t), this.data = Buffer.concat([this.data, e]);
   }
   readVarInt() {
-    return __awaiter$7(this, void 0, void 0, function* () {
-      return yield (0, varint_1.readVarInt)(() => this.readByte());
+    return x(this, void 0, void 0, function* () {
+      return yield (0, xt.readVarInt)(() => this.readByte());
     });
   }
-  writeVarInt(value) {
-    this.writeBytes((0, varint_1.writeVarInt)(value));
+  writeVarInt(t) {
+    this.writeBytes((0, xt.writeVarInt)(t));
   }
-  readString(length) {
-    return __awaiter$7(this, void 0, void 0, function* () {
-      const data = yield this.readBytes(length);
-      return decoder$1.decode(data);
+  readString(t) {
+    return x(this, void 0, void 0, function* () {
+      const e = yield this.readBytes(t);
+      return Go.decode(e);
     });
   }
-  writeString(value) {
-    this.writeBytes(encoder$2.encode(value));
+  writeString(t) {
+    this.writeBytes(we.encode(t));
   }
   readStringVarInt() {
-    return __awaiter$7(this, void 0, void 0, function* () {
-      const length = yield this.readVarInt();
-      const data = yield this.readBytes(length);
-      return Array.from(data).map((point) => String.fromCodePoint(point)).join("");
+    return x(this, void 0, void 0, function* () {
+      const t = yield this.readVarInt(), e = yield this.readBytes(t);
+      return Array.from(e).map((i) => String.fromCodePoint(i)).join("");
     });
   }
-  writeStringVarInt(value) {
-    const data = encoder$2.encode(value);
-    this.writeVarInt(data.byteLength);
-    this.writeBytes(data);
+  writeStringVarInt(t) {
+    const e = we.encode(t);
+    this.writeVarInt(e.byteLength), this.writeBytes(e);
   }
   readStringNT() {
-    return __awaiter$7(this, void 0, void 0, function* () {
-      let buf = Buffer.alloc(0);
-      let value;
-      while ((value = yield this.readByte()) !== 0) {
-        buf = Buffer.concat([buf, Buffer.from([value])]);
-      }
-      return Array.from(buf).map((point) => String.fromCodePoint(point)).join("");
+    return x(this, void 0, void 0, function* () {
+      let t = Buffer.alloc(0), e;
+      for (; (e = yield this.readByte()) !== 0; )
+        t = Buffer.concat([t, Buffer.from([e])]);
+      return Array.from(t).map((i) => String.fromCodePoint(i)).join("");
     });
   }
-  readStringNTFollowedBy(suffixes) {
-    return __awaiter$7(this, void 0, void 0, function* () {
-      let buf = Buffer.alloc(0);
-      while (true) {
-        const value = yield this.readByte();
-        if (value === 0 && (yield this.checkUpcomingData(suffixes))) {
+  readStringNTFollowedBy(t) {
+    return x(this, void 0, void 0, function* () {
+      let e = Buffer.alloc(0);
+      for (; ; ) {
+        const i = yield this.readByte();
+        if (i === 0 && (yield this.checkUpcomingData(t)))
           break;
-        }
-        buf = Buffer.concat([buf, Buffer.from([value])]);
+        e = Buffer.concat([e, Buffer.from([i])]);
       }
-      return Array.from(buf).map((point) => String.fromCodePoint(point)).join("");
+      return Array.from(e).map((i) => String.fromCodePoint(i)).join("");
     });
   }
-  checkUpcomingData(suffixes) {
-    return __awaiter$7(this, void 0, void 0, function* () {
-      let i = 0;
-      while (suffixes.length) {
-        yield this.ensureBufferedData(i + 1);
-        const remaining = [];
-        for (const suffix of suffixes) {
-          if (this.data[i] === suffix[i]) {
-            if (i === suffix.length - 1) {
-              return suffix;
-            }
-            remaining.push(suffix);
+  checkUpcomingData(t) {
+    return x(this, void 0, void 0, function* () {
+      let e = 0;
+      for (; t.length; ) {
+        yield this.ensureBufferedData(e + 1);
+        const i = [];
+        for (const s of t)
+          if (this.data[e] === s[e]) {
+            if (e === s.length - 1)
+              return s;
+            i.push(s);
           }
-        }
-        suffixes = remaining;
-        i++;
+        t = i, e++;
       }
       return null;
     });
   }
-  writeStringNT(value) {
-    const data = encoder$2.encode(value);
-    this.writeBytes(data);
-    this.writeByte(0);
+  writeStringNT(t) {
+    const e = we.encode(t);
+    this.writeBytes(e), this.writeByte(0);
   }
-  writeStringBytes(value) {
-    this.writeBytes(encoder$2.encode(value));
+  writeStringBytes(t) {
+    this.writeBytes(we.encode(t));
   }
-  flush(prefixLength = true) {
-    if (!this.socket)
-      return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      let buf = this.data;
-      if (prefixLength) {
-        buf = Buffer.concat([(0, varint_1.writeVarInt)(buf.byteLength), buf]);
-      }
-      this.socket.send(buf, 0, buf.byteLength, this.port, this.host, (error) => {
-        if (error)
-          return reject(error);
-        resolve();
-      });
-      this.data = Buffer.alloc(0);
-    });
+  flush(t = !0) {
+    return this.socket ? new Promise((e, i) => {
+      let s = this.data;
+      t && (s = Buffer.concat([(0, xt.writeVarInt)(s.byteLength), s])), this.socket.send(s, 0, s.byteLength, this.port, this.host, (r) => {
+        if (r)
+          return i(r);
+        e();
+      }), this.data = Buffer.alloc(0);
+    }) : Promise.resolve();
   }
   close() {
-    var _a;
+    var t;
     try {
-      (_a = this.socket) === null || _a === void 0 ? void 0 : _a.close();
-    } catch (_b) {
+      (t = this.socket) === null || t === void 0 || t.close();
+    } catch {
     }
   }
-  ensureBufferedData(byteLength) {
-    return __awaiter$7(this, void 0, void 0, function* () {
-      if (this.data.byteLength >= byteLength)
-        return Promise.resolve();
-      return this._waitForData(byteLength);
+  ensureBufferedData(t) {
+    return x(this, void 0, void 0, function* () {
+      return this.data.byteLength >= t ? Promise.resolve() : this._waitForData(t);
     });
   }
-  _waitForData(byteLength = 1) {
-    return new Promise((resolve, reject) => {
-      const dataHandler = () => {
-        if (this.data.byteLength >= byteLength) {
-          this.removeListener("data", dataHandler);
-          this.socket.removeListener("error", errorHandler);
-          resolve();
-        }
+  _waitForData(t = 1) {
+    return new Promise((e, i) => {
+      const s = () => {
+        this.data.byteLength >= t && (this.removeListener("data", s), this.socket.removeListener("error", r), e());
+      }, r = (o) => {
+        this.removeListener("data", s), this.socket.removeListener("error", r), i(o);
       };
-      const errorHandler = (error) => {
-        this.removeListener("data", dataHandler);
-        this.socket.removeListener("error", errorHandler);
-        reject(error);
-      };
-      this.once("data", () => dataHandler());
-      this.socket.on("error", (error) => errorHandler(error));
+      this.once("data", () => s()), this.socket.on("error", (o) => r(o));
     });
   }
   hasRemainingData() {
     return this.data.byteLength > 0;
   }
 }
-UDPClient$1.default = UDPClient;
-var __awaiter$6 = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+fe.default = Ko;
+var Yo = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, jr = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$6 = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(statusBedrock$1, "__esModule", { value: true });
-statusBedrock$1.statusBedrock = void 0;
-const assert_1$6 = __importDefault$6(require$$0$1);
-const minecraft_motd_util_1$2 = dist;
-const UDPClient_1$2 = __importDefault$6(UDPClient$1);
-const srvRecord_1$2 = srvRecord;
-function statusBedrock(host, port = 19132, options) {
-  host = host.trim();
-  (0, assert_1$6.default)(typeof host === "string", `Expected 'host' to be a 'string', got '${typeof host}'`);
-  (0, assert_1$6.default)(host.length > 1, `Expected 'host' to have a length greater than 0, got ${host.length}`);
-  (0, assert_1$6.default)(typeof port === "number", `Expected 'port' to be a 'number', got '${typeof port}'`);
-  (0, assert_1$6.default)(Number.isInteger(port), `Expected 'port' to be an integer, got '${port}'`);
-  (0, assert_1$6.default)(port >= 0, `Expected 'port' to be greater than or equal to 0, got '${port}'`);
-  (0, assert_1$6.default)(port <= 65535, `Expected 'port' to be less than or equal to 65535, got '${port}'`);
-  (0, assert_1$6.default)(typeof options === "object" || typeof options === "undefined", `Expected 'options' to be an 'object' or 'undefined', got '${typeof options}'`);
-  if (typeof options === "object") {
-    (0, assert_1$6.default)(typeof options.enableSRV === "boolean" || typeof options.enableSRV === "undefined", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof options.enableSRV}'`);
-    (0, assert_1$6.default)(typeof options.timeout === "number" || typeof options.timeout === "undefined", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof options.timeout}'`);
-    if (typeof options.timeout === "number") {
-      (0, assert_1$6.default)(Number.isInteger(options.timeout), `Expected 'options.timeout' to be an integer, got '${options.timeout}'`);
-      (0, assert_1$6.default)(options.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${options.timeout}'`);
-    }
-  }
-  return new Promise((resolve, reject) => __awaiter$6(this, void 0, void 0, function* () {
-    var _a;
-    const socket = new UDPClient_1$2.default(host, port);
-    const timeout2 = setTimeout(() => {
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(new Error("Server is offline or unreachable"));
-    }, (_a = options === null || options === void 0 ? void 0 : options.timeout) !== null && _a !== void 0 ? _a : 1e3 * 5);
+Object.defineProperty(je, "__esModule", { value: !0 });
+je.statusBedrock = void 0;
+const V = jr(D), be = Z, Qo = jr(fe), Zo = z;
+function Xo(n, t = 19132, e) {
+  return n = n.trim(), (0, V.default)(typeof n == "string", `Expected 'host' to be a 'string', got '${typeof n}'`), (0, V.default)(n.length > 1, `Expected 'host' to have a length greater than 0, got ${n.length}`), (0, V.default)(typeof t == "number", `Expected 'port' to be a 'number', got '${typeof t}'`), (0, V.default)(Number.isInteger(t), `Expected 'port' to be an integer, got '${t}'`), (0, V.default)(t >= 0, `Expected 'port' to be greater than or equal to 0, got '${t}'`), (0, V.default)(t <= 65535, `Expected 'port' to be less than or equal to 65535, got '${t}'`), (0, V.default)(typeof e == "object" || typeof e > "u", `Expected 'options' to be an 'object' or 'undefined', got '${typeof e}'`), typeof e == "object" && ((0, V.default)(typeof e.enableSRV == "boolean" || typeof e.enableSRV > "u", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof e.enableSRV}'`), (0, V.default)(typeof e.timeout == "number" || typeof e.timeout > "u", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof e.timeout}'`), typeof e.timeout == "number" && ((0, V.default)(Number.isInteger(e.timeout), `Expected 'options.timeout' to be an integer, got '${e.timeout}'`), (0, V.default)(e.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${e.timeout}'`))), new Promise((i, s) => Yo(this, void 0, void 0, function* () {
+    var r;
+    const o = new Qo.default(n, t), a = setTimeout(() => {
+      o == null || o.close(), s(new Error("Server is offline or unreachable"));
+    }, (r = e == null ? void 0 : e.timeout) !== null && r !== void 0 ? r : 1e3 * 5);
     try {
-      let srvRecord2 = null;
-      if (typeof options === "undefined" || typeof options.enableSRV === "undefined" || options.enableSRV) {
-        srvRecord2 = yield (0, srvRecord_1$2.resolveSRV)(host, "udp");
-        if (srvRecord2) {
-          host = srvRecord2.host;
-          port = srvRecord2.port;
-        }
-      }
+      let c = null;
+      (typeof e > "u" || typeof e.enableSRV > "u" || e.enableSRV) && (c = yield (0, Zo.resolveSRV)(n, "udp"), c && (n = c.host, t = c.port)), o.writeByte(1), o.writeInt64BE(BigInt(Date.now())), o.writeBytes(Uint8Array.from([0, 255, 255, 0, 254, 254, 254, 254, 253, 253, 253, 253, 18, 52, 86, 120])), o.writeInt64BE(BigInt(2)), yield o.flush(!1);
       {
-        socket.writeByte(1);
-        socket.writeInt64BE(BigInt(Date.now()));
-        socket.writeBytes(Uint8Array.from([0, 255, 255, 0, 254, 254, 254, 254, 253, 253, 253, 253, 18, 52, 86, 120]));
-        socket.writeInt64BE(BigInt(2));
-        yield socket.flush(false);
-      }
-      {
-        const packetType = yield socket.readByte();
-        if (packetType !== 28)
-          throw new Error("Expected server to send packet type 0x1C, received " + packetType);
-        yield socket.readInt64BE();
-        const serverGUID = yield socket.readInt64BE();
-        yield socket.readBytes(16);
-        const responseLength = yield socket.readInt16BE();
-        const response = yield socket.readString(responseLength);
-        const [edition, motdLine1, protocolVersion, version, onlinePlayers, maxPlayers, serverID, motdLine2, gameMode, gameModeID, portIPv4, portIPv6] = response.split(";");
-        const motd = (0, minecraft_motd_util_1$2.parse)(motdLine1 + (motdLine2 ? "\n" + motdLine2 : ""));
-        socket.close();
-        clearTimeout(timeout2);
-        resolve({
-          edition,
+        const l = yield o.readByte();
+        if (l !== 28)
+          throw new Error("Expected server to send packet type 0x1C, received " + l);
+        yield o.readInt64BE();
+        const u = yield o.readInt64BE();
+        yield o.readBytes(16);
+        const d = yield o.readInt16BE(), f = yield o.readString(d), [h, m, v, g, w, b, $, re, S, I, P, J] = f.split(";"), ae = (0, be.parse)(m + (re ? `
+` + re : ""));
+        o.close(), clearTimeout(a), i({
+          edition: h,
           motd: {
-            raw: (0, minecraft_motd_util_1$2.format)(motd),
-            clean: (0, minecraft_motd_util_1$2.clean)(motd),
-            html: (0, minecraft_motd_util_1$2.toHTML)(motd)
+            raw: (0, be.format)(ae),
+            clean: (0, be.clean)(ae),
+            html: (0, be.toHTML)(ae)
           },
           version: {
-            name: version,
-            protocol: parseInt(protocolVersion)
+            name: g,
+            protocol: parseInt(v)
           },
           players: {
-            online: parseInt(onlinePlayers),
-            max: parseInt(maxPlayers)
+            online: parseInt(w),
+            max: parseInt(b)
           },
-          serverGUID,
-          serverID,
-          gameMode,
-          gameModeID: parseInt(gameModeID),
-          portIPv4: portIPv4 ? parseInt(portIPv4) : null,
-          portIPv6: portIPv6 ? parseInt(portIPv6) : null,
-          srvRecord: srvRecord2
+          serverGUID: u,
+          serverID: $,
+          gameMode: S,
+          gameModeID: parseInt(I),
+          portIPv4: P ? parseInt(P) : null,
+          portIPv6: J ? parseInt(J) : null,
+          srvRecord: c
         });
       }
-    } catch (e) {
-      clearTimeout(timeout2);
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(e);
+    } catch (c) {
+      clearTimeout(a), o == null || o.close(), s(c);
     }
   }));
 }
-statusBedrock$1.statusBedrock = statusBedrock;
-var queryBasic$1 = {};
-var __awaiter$5 = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+je.statusBedrock = Xo;
+var Ne = {}, ei = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, Nr = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$5 = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(queryBasic$1, "__esModule", { value: true });
-queryBasic$1.queryBasic = void 0;
-const assert_1$5 = __importDefault$5(require$$0$1);
-const minecraft_motd_util_1$1 = dist;
-const UDPClient_1$1 = __importDefault$5(UDPClient$1);
-const srvRecord_1$1 = srvRecord;
-function queryBasic(host, port = 25565, options) {
-  var _a;
-  host = host.trim();
-  (0, assert_1$5.default)(typeof host === "string", `Expected 'host' to be a 'string', got '${typeof host}'`);
-  (0, assert_1$5.default)(host.length > 1, `Expected 'host' to have a length greater than 0, got ${host.length}`);
-  (0, assert_1$5.default)(typeof port === "number", `Expected 'port' to be a 'number', got '${typeof port}'`);
-  (0, assert_1$5.default)(Number.isInteger(port), `Expected 'port' to be an integer, got '${port}'`);
-  (0, assert_1$5.default)(port >= 0, `Expected 'port' to be greater than or equal to 0, got '${port}'`);
-  (0, assert_1$5.default)(port <= 65535, `Expected 'port' to be less than or equal to 65535, got '${port}'`);
-  (0, assert_1$5.default)(typeof options === "object" || typeof options === "undefined", `Expected 'options' to be an 'object' or 'undefined', got '${typeof options}'`);
-  if (typeof options === "object") {
-    (0, assert_1$5.default)(typeof options.enableSRV === "boolean" || typeof options.enableSRV === "undefined", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof options.enableSRV}'`);
-    (0, assert_1$5.default)(typeof options.sessionID === "number" || typeof options.sessionID === "undefined", `Expected 'options.sessionID' to be a 'number' or 'undefined', got '${typeof options.sessionID}'`);
-    (0, assert_1$5.default)(typeof options.timeout === "number" || typeof options.timeout === "undefined", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof options.timeout}'`);
-    if (typeof options.timeout === "number") {
-      (0, assert_1$5.default)(Number.isInteger(options.timeout), `Expected 'options.timeout' to be an integer, got '${options.timeout}'`);
-      (0, assert_1$5.default)(options.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${options.timeout}'`);
-    }
-  }
-  const sessionID = ((_a = options === null || options === void 0 ? void 0 : options.sessionID) !== null && _a !== void 0 ? _a : 1) & 252645135;
-  return new Promise((resolve, reject) => __awaiter$5(this, void 0, void 0, function* () {
-    var _b;
-    const socket = new UDPClient_1$1.default(host, port);
-    const timeout2 = setTimeout(() => {
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(new Error("Server is offline or unreachable"));
-    }, (_b = options === null || options === void 0 ? void 0 : options.timeout) !== null && _b !== void 0 ? _b : 1e3 * 5);
+Object.defineProperty(Ne, "__esModule", { value: !0 });
+Ne.queryBasic = void 0;
+const T = Nr(D), Ee = Z, ti = Nr(fe), ri = z;
+function ni(n, t = 25565, e) {
+  var i;
+  n = n.trim(), (0, T.default)(typeof n == "string", `Expected 'host' to be a 'string', got '${typeof n}'`), (0, T.default)(n.length > 1, `Expected 'host' to have a length greater than 0, got ${n.length}`), (0, T.default)(typeof t == "number", `Expected 'port' to be a 'number', got '${typeof t}'`), (0, T.default)(Number.isInteger(t), `Expected 'port' to be an integer, got '${t}'`), (0, T.default)(t >= 0, `Expected 'port' to be greater than or equal to 0, got '${t}'`), (0, T.default)(t <= 65535, `Expected 'port' to be less than or equal to 65535, got '${t}'`), (0, T.default)(typeof e == "object" || typeof e > "u", `Expected 'options' to be an 'object' or 'undefined', got '${typeof e}'`), typeof e == "object" && ((0, T.default)(typeof e.enableSRV == "boolean" || typeof e.enableSRV > "u", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof e.enableSRV}'`), (0, T.default)(typeof e.sessionID == "number" || typeof e.sessionID > "u", `Expected 'options.sessionID' to be a 'number' or 'undefined', got '${typeof e.sessionID}'`), (0, T.default)(typeof e.timeout == "number" || typeof e.timeout > "u", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof e.timeout}'`), typeof e.timeout == "number" && ((0, T.default)(Number.isInteger(e.timeout), `Expected 'options.timeout' to be an integer, got '${e.timeout}'`), (0, T.default)(e.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${e.timeout}'`)));
+  const s = ((i = e == null ? void 0 : e.sessionID) !== null && i !== void 0 ? i : 1) & 252645135;
+  return new Promise((r, o) => ei(this, void 0, void 0, function* () {
+    var a;
+    const c = new ti.default(n, t), l = setTimeout(() => {
+      c == null || c.close(), o(new Error("Server is offline or unreachable"));
+    }, (a = e == null ? void 0 : e.timeout) !== null && a !== void 0 ? a : 1e3 * 5);
     try {
-      let srvRecord2 = null;
-      if (typeof options === "undefined" || typeof options.enableSRV === "undefined" || options.enableSRV) {
-        srvRecord2 = yield (0, srvRecord_1$1.resolveSRV)(host, "udp");
-        if (srvRecord2) {
-          host = srvRecord2.host;
-          port = srvRecord2.port;
-        }
-      }
+      let u = null;
+      (typeof e > "u" || typeof e.enableSRV > "u" || e.enableSRV) && (u = yield (0, ri.resolveSRV)(n, "udp"), u && (n = u.host, t = u.port)), c.writeUInt16BE(65277), c.writeByte(9), c.writeInt32BE(s), yield c.flush(!1);
+      let d;
       {
-        socket.writeUInt16BE(65277);
-        socket.writeByte(9);
-        socket.writeInt32BE(sessionID);
-        yield socket.flush(false);
-      }
-      let challengeToken;
-      {
-        const packetType = yield socket.readByte();
-        if (packetType !== 9)
-          throw new Error("Expected server to send packet type 0x09, received " + packetType);
-        const serverSessionID = yield socket.readInt32BE();
-        if (sessionID !== serverSessionID)
-          throw new Error("Server session ID mismatch, expected " + sessionID + ", received " + serverSessionID);
-        challengeToken = parseInt(yield socket.readStringNT());
-        if (isNaN(challengeToken))
+        const f = yield c.readByte();
+        if (f !== 9)
+          throw new Error("Expected server to send packet type 0x09, received " + f);
+        const h = yield c.readInt32BE();
+        if (s !== h)
+          throw new Error("Server session ID mismatch, expected " + s + ", received " + h);
+        if (d = parseInt(yield c.readStringNT()), isNaN(d))
           throw new Error("Server sent an invalid challenge token");
       }
+      c.writeUInt16BE(65277), c.writeByte(0), c.writeInt32BE(s), c.writeInt32BE(d), yield c.flush(!1);
       {
-        socket.writeUInt16BE(65277);
-        socket.writeByte(0);
-        socket.writeInt32BE(sessionID);
-        socket.writeInt32BE(challengeToken);
-        yield socket.flush(false);
-      }
-      {
-        const packetType = yield socket.readByte();
-        if (packetType !== 0)
-          throw new Error("Expected server to send packet type 0x00, received " + packetType);
-        const serverSessionID = yield socket.readInt32BE();
-        if (sessionID !== serverSessionID)
-          throw new Error("Server session ID mismatch, expected " + sessionID + ", received " + serverSessionID);
-        const motdString = yield socket.readStringNT();
-        const gameType = yield socket.readStringNT();
-        const map = yield socket.readStringNT();
-        const onlinePlayers = yield socket.readStringNT();
-        const maxPlayers = yield socket.readStringNT();
-        const hostPort = yield socket.readInt16LE();
-        const hostIP = yield socket.readStringNT();
-        const motd = (0, minecraft_motd_util_1$1.parse)(motdString);
-        socket.close();
-        clearTimeout(timeout2);
-        resolve({
+        const f = yield c.readByte();
+        if (f !== 0)
+          throw new Error("Expected server to send packet type 0x00, received " + f);
+        const h = yield c.readInt32BE();
+        if (s !== h)
+          throw new Error("Server session ID mismatch, expected " + s + ", received " + h);
+        const m = yield c.readStringNT(), v = yield c.readStringNT(), g = yield c.readStringNT(), w = yield c.readStringNT(), b = yield c.readStringNT(), $ = yield c.readInt16LE(), re = yield c.readStringNT(), S = (0, Ee.parse)(m);
+        c.close(), clearTimeout(l), r({
           motd: {
-            raw: (0, minecraft_motd_util_1$1.format)(motd),
-            clean: (0, minecraft_motd_util_1$1.clean)(motd),
-            html: (0, minecraft_motd_util_1$1.toHTML)(motd)
+            raw: (0, Ee.format)(S),
+            clean: (0, Ee.clean)(S),
+            html: (0, Ee.toHTML)(S)
           },
-          gameType,
-          map,
+          gameType: v,
+          map: g,
           players: {
-            online: parseInt(onlinePlayers),
-            max: parseInt(maxPlayers)
+            online: parseInt(w),
+            max: parseInt(b)
           },
-          hostPort,
-          hostIP
+          hostPort: $,
+          hostIP: re
         });
       }
-    } catch (e) {
-      clearTimeout(timeout2);
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(e);
+    } catch (u) {
+      clearTimeout(l), c == null || c.close(), o(u);
     }
   }));
 }
-queryBasic$1.queryBasic = queryBasic;
-var queryFull$1 = {};
-var __awaiter$4 = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+Ne.queryBasic = ni;
+var Me = {}, oi = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, Mr = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$4 = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(queryFull$1, "__esModule", { value: true });
-queryFull$1.queryFull = void 0;
-const assert_1$4 = __importDefault$4(require$$0$1);
-const minecraft_motd_util_1 = dist;
-const UDPClient_1 = __importDefault$4(UDPClient$1);
-const srvRecord_1 = srvRecord;
-const validKeys = [
+Object.defineProperty(Me, "__esModule", { value: !0 });
+Me.queryFull = void 0;
+const A = Mr(D), _e = Z, ii = Mr(fe), ai = z, si = [
   "gametype",
   "game_id",
   "version",
@@ -2892,1213 +4095,793 @@ const validKeys = [
   "maxplayers",
   "hostport",
   "hostip"
-].map((s) => Buffer.from(s, "ascii"));
-function queryFull(host, port = 25565, options) {
-  var _a;
-  host = host.trim();
-  (0, assert_1$4.default)(typeof host === "string", `Expected 'host' to be a 'string', got '${typeof host}'`);
-  (0, assert_1$4.default)(host.length > 0, `Expected 'host' to have a length greater than 0, got ${host.length}`);
-  (0, assert_1$4.default)(typeof port === "number", `Expected 'port' to be a 'number', got '${typeof port}'`);
-  (0, assert_1$4.default)(Number.isInteger(port), `Expected 'port' to be an integer, got '${port}'`);
-  (0, assert_1$4.default)(port >= 0, `Expected 'port' to be greater than or equal to 0, got '${port}'`);
-  (0, assert_1$4.default)(port <= 65535, `Expected 'port' to be less than or equal to 65535, got '${port}'`);
-  (0, assert_1$4.default)(typeof options === "object" || typeof options === "undefined", `Expected 'options' to be an 'object' or 'undefined', got '${typeof options}'`);
-  if (typeof options === "object") {
-    (0, assert_1$4.default)(typeof options.enableSRV === "boolean" || typeof options.enableSRV === "undefined", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof options.enableSRV}'`);
-    (0, assert_1$4.default)(typeof options.sessionID === "number" || typeof options.sessionID === "undefined", `Expected 'options.sessionID' to be a 'number' or 'undefined', got '${typeof options.sessionID}'`);
-    (0, assert_1$4.default)(typeof options.timeout === "number" || typeof options.timeout === "undefined", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof options.timeout}'`);
-    if (typeof options.timeout === "number") {
-      (0, assert_1$4.default)(Number.isInteger(options.timeout), `Expected 'options.timeout' to be an integer, got '${options.timeout}'`);
-      (0, assert_1$4.default)(options.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${options.timeout}'`);
-    }
-  }
-  const sessionID = ((_a = options === null || options === void 0 ? void 0 : options.sessionID) !== null && _a !== void 0 ? _a : 1) & 252645135;
-  return new Promise((resolve, reject) => __awaiter$4(this, void 0, void 0, function* () {
-    var _b;
-    const socket = new UDPClient_1.default(host, port);
-    const timeout2 = setTimeout(() => {
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(new Error("Server is offline or unreachable"));
-    }, (_b = options === null || options === void 0 ? void 0 : options.timeout) !== null && _b !== void 0 ? _b : 1e3 * 5);
+].map((n) => Buffer.from(n, "ascii"));
+function ci(n, t = 25565, e) {
+  var i;
+  n = n.trim(), (0, A.default)(typeof n == "string", `Expected 'host' to be a 'string', got '${typeof n}'`), (0, A.default)(n.length > 0, `Expected 'host' to have a length greater than 0, got ${n.length}`), (0, A.default)(typeof t == "number", `Expected 'port' to be a 'number', got '${typeof t}'`), (0, A.default)(Number.isInteger(t), `Expected 'port' to be an integer, got '${t}'`), (0, A.default)(t >= 0, `Expected 'port' to be greater than or equal to 0, got '${t}'`), (0, A.default)(t <= 65535, `Expected 'port' to be less than or equal to 65535, got '${t}'`), (0, A.default)(typeof e == "object" || typeof e > "u", `Expected 'options' to be an 'object' or 'undefined', got '${typeof e}'`), typeof e == "object" && ((0, A.default)(typeof e.enableSRV == "boolean" || typeof e.enableSRV > "u", `Expected 'options.enableSRV' to be a 'boolean' or 'undefined', got '${typeof e.enableSRV}'`), (0, A.default)(typeof e.sessionID == "number" || typeof e.sessionID > "u", `Expected 'options.sessionID' to be a 'number' or 'undefined', got '${typeof e.sessionID}'`), (0, A.default)(typeof e.timeout == "number" || typeof e.timeout > "u", `Expected 'options.timeout' to be a 'number' or 'undefined', got '${typeof e.timeout}'`), typeof e.timeout == "number" && ((0, A.default)(Number.isInteger(e.timeout), `Expected 'options.timeout' to be an integer, got '${e.timeout}'`), (0, A.default)(e.timeout >= 0, `Expected 'options.timeout' to be greater than or equal to 0, got '${e.timeout}'`)));
+  const s = ((i = e == null ? void 0 : e.sessionID) !== null && i !== void 0 ? i : 1) & 252645135;
+  return new Promise((r, o) => oi(this, void 0, void 0, function* () {
+    var a;
+    const c = new ii.default(n, t), l = setTimeout(() => {
+      c == null || c.close(), o(new Error("Server is offline or unreachable"));
+    }, (a = e == null ? void 0 : e.timeout) !== null && a !== void 0 ? a : 1e3 * 5);
     try {
-      let srvRecord2 = null;
-      if (typeof options === "undefined" || typeof options.enableSRV === "undefined" || options.enableSRV) {
-        srvRecord2 = yield (0, srvRecord_1.resolveSRV)(host, "udp");
-        if (srvRecord2) {
-          host = srvRecord2.host;
-          port = srvRecord2.port;
-        }
-      }
+      let u = null;
+      (typeof e > "u" || typeof e.enableSRV > "u" || e.enableSRV) && (u = yield (0, ai.resolveSRV)(n, "udp"), u && (n = u.host, t = u.port)), c.writeUInt16BE(65277), c.writeByte(9), c.writeInt32BE(s), yield c.flush(!1);
+      let d;
       {
-        socket.writeUInt16BE(65277);
-        socket.writeByte(9);
-        socket.writeInt32BE(sessionID);
-        yield socket.flush(false);
-      }
-      let challengeToken;
-      {
-        const packetType = yield socket.readByte();
-        if (packetType !== 9)
-          throw new Error("Expected server to send packet type 0x09, received " + packetType);
-        const serverSessionID = yield socket.readInt32BE();
-        if (sessionID !== serverSessionID)
-          throw new Error("Server session ID mismatch, expected " + sessionID + ", received " + serverSessionID);
-        challengeToken = parseInt(yield socket.readStringNT());
-        if (isNaN(challengeToken))
+        const f = yield c.readByte();
+        if (f !== 9)
+          throw new Error("Expected server to send packet type 0x09, received " + f);
+        const h = yield c.readInt32BE();
+        if (s !== h)
+          throw new Error("Server session ID mismatch, expected " + s + ", received " + h);
+        if (d = parseInt(yield c.readStringNT()), isNaN(d))
           throw new Error("Server sent an invalid challenge token");
       }
+      c.writeUInt16BE(65277), c.writeByte(0), c.writeInt32BE(s), c.writeInt32BE(d), c.writeBytes(Uint8Array.from([0, 0, 0, 0])), yield c.flush(!1);
       {
-        socket.writeUInt16BE(65277);
-        socket.writeByte(0);
-        socket.writeInt32BE(sessionID);
-        socket.writeInt32BE(challengeToken);
-        socket.writeBytes(Uint8Array.from([0, 0, 0, 0]));
-        yield socket.flush(false);
-      }
-      {
-        const packetType = yield socket.readByte();
-        if (packetType !== 0)
-          throw new Error("Expected server to send packet type 0x00, received " + packetType);
-        const serverSessionID = yield socket.readInt32BE();
-        if (sessionID !== serverSessionID)
-          throw new Error("Server session ID mismatch, expected " + sessionID + ", received " + serverSessionID);
-        yield socket.readBytes(11);
-        const data = {};
-        const players = [];
-        while (true) {
-          const key = yield socket.readStringNT();
-          if (key.length < 1)
+        const f = yield c.readByte();
+        if (f !== 0)
+          throw new Error("Expected server to send packet type 0x00, received " + f);
+        const h = yield c.readInt32BE();
+        if (s !== h)
+          throw new Error("Server session ID mismatch, expected " + s + ", received " + h);
+        yield c.readBytes(11);
+        const m = {}, v = [];
+        for (; ; ) {
+          const b = yield c.readStringNT();
+          if (b.length < 1)
             break;
-          let value;
-          if (key === "hostname") {
-            value = yield socket.readStringNTFollowedBy(validKeys);
-          } else {
-            value = yield socket.readStringNT();
-          }
-          data[key] = value;
+          let $;
+          b === "hostname" ? $ = yield c.readStringNTFollowedBy(si) : $ = yield c.readStringNT(), m[b] = $;
         }
-        yield socket.readBytes(10);
-        while (true) {
-          const username = yield socket.readStringNT();
-          if (username.length < 1)
+        for (yield c.readBytes(10); ; ) {
+          const b = yield c.readStringNT();
+          if (b.length < 1)
             break;
-          players.push(username);
+          v.push(b);
         }
-        const motd = (0, minecraft_motd_util_1.parse)(data.hostname);
-        const plugins = data.plugins.split(/(?::|;) */g);
-        socket.close();
-        if (socket.hasRemainingData()) {
+        const g = (0, _e.parse)(m.hostname), w = m.plugins.split(/(?::|;) */g);
+        if (c.close(), c.hasRemainingData())
           throw new Error("Server sent more data than expected");
-        }
-        clearTimeout(timeout2);
-        resolve({
+        clearTimeout(l), r({
           motd: {
-            raw: (0, minecraft_motd_util_1.format)(motd),
-            clean: (0, minecraft_motd_util_1.clean)(motd),
-            html: (0, minecraft_motd_util_1.toHTML)(motd)
+            raw: (0, _e.format)(g),
+            clean: (0, _e.clean)(g),
+            html: (0, _e.toHTML)(g)
           },
-          version: data.version,
-          software: plugins[0],
-          plugins: plugins.slice(1),
-          map: data.map,
+          version: m.version,
+          software: w[0],
+          plugins: w.slice(1),
+          map: m.map,
           players: {
-            online: parseInt(data.numplayers),
-            max: parseInt(data.maxplayers),
-            list: players
+            online: parseInt(m.numplayers),
+            max: parseInt(m.maxplayers),
+            list: v
           },
-          hostIP: data.hostip,
-          hostPort: parseInt(data.hostport)
+          hostIP: m.hostip,
+          hostPort: parseInt(m.hostport)
         });
       }
-    } catch (e) {
-      clearTimeout(timeout2);
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(e);
+    } catch (u) {
+      clearTimeout(l), c == null || c.close(), o(u);
     }
   }));
 }
-queryFull$1.queryFull = queryFull;
-var scanLAN$1 = {};
-var __awaiter$3 = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+Me.queryFull = ci;
+var Ve = {}, li = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, Vr = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$3 = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(scanLAN$1, "__esModule", { value: true });
-scanLAN$1.scanLAN = void 0;
-const assert_1$3 = __importDefault$3(require$$0$1);
-const dgram_1 = __importDefault$3(require$$0__default);
-const util_1$2 = require$$2;
-const decoder = new util_1$2.TextDecoder("utf8");
-const pattern = /\[MOTD\](.*)\[\/MOTD\]\[AD\](\d{1,5})\[\/AD\]/;
-function scanLAN(options) {
-  (0, assert_1$3.default)(typeof options === "object" || typeof options === "undefined", `Expected 'options' to be an 'object' or 'undefined', got '${typeof options}'`);
-  if (typeof options === "object") {
-    (0, assert_1$3.default)(typeof options.scanTime === "number" || typeof options.scanTime === "undefined", `Expected 'options.scanTime' to be a 'number' or 'undefined', got '${typeof options.scanTime}'`);
-    if (typeof options.scanTime === "number") {
-      (0, assert_1$3.default)(options.scanTime > 0, `Expected 'options.scanTime' to be greater than or equal to 0, got '${options.scanTime}'`);
-    }
-  }
-  const servers = [];
-  const socket = dgram_1.default.createSocket("udp4");
-  socket.on("message", (message, info) => {
-    const match = decoder.decode(message).match(pattern);
-    if (!match || match.length < 3)
+Object.defineProperty(Ve, "__esModule", { value: !0 });
+Ve.scanLAN = void 0;
+const St = Vr(D), ui = Vr(br), di = Q, fi = new di.TextDecoder("utf8"), hi = /\[MOTD\](.*)\[\/MOTD\]\[AD\](\d{1,5})\[\/AD\]/;
+function pi(n) {
+  (0, St.default)(typeof n == "object" || typeof n > "u", `Expected 'options' to be an 'object' or 'undefined', got '${typeof n}'`), typeof n == "object" && ((0, St.default)(typeof n.scanTime == "number" || typeof n.scanTime > "u", `Expected 'options.scanTime' to be a 'number' or 'undefined', got '${typeof n.scanTime}'`), typeof n.scanTime == "number" && (0, St.default)(n.scanTime > 0, `Expected 'options.scanTime' to be greater than or equal to 0, got '${n.scanTime}'`));
+  const t = [], e = ui.default.createSocket("udp4");
+  return e.on("message", (i, s) => {
+    const r = fi.decode(i).match(hi);
+    if (!r || r.length < 3)
       return;
-    let port = parseInt(match[2]);
-    if (isNaN(port))
-      port = 25565;
-    if (servers.some((server) => server.host === info.address && server.port === port))
-      return;
-    servers.push({
-      host: info.address,
-      port,
-      motd: match[1]
+    let o = parseInt(r[2]);
+    isNaN(o) && (o = 25565), !t.some((a) => a.host === s.address && a.port === o) && t.push({
+      host: s.address,
+      port: o,
+      motd: r[1]
     });
-  });
-  socket.bind(4445, () => {
-    socket.addMembership("224.0.2.60");
-  });
-  return new Promise((resolve, reject) => {
-    var _a;
-    const timeout2 = setTimeout(() => __awaiter$3(this, void 0, void 0, function* () {
-      yield new Promise((resolve2) => socket.close(resolve2));
-      resolve(servers);
-    }), (_a = options === null || options === void 0 ? void 0 : options.scanTime) !== null && _a !== void 0 ? _a : 1e3 * 5);
-    socket.on("error", (error) => {
-      socket.close();
-      clearTimeout(timeout2);
-      reject(error);
+  }), e.bind(4445, () => {
+    e.addMembership("224.0.2.60");
+  }), new Promise((i, s) => {
+    var r;
+    const o = setTimeout(() => li(this, void 0, void 0, function* () {
+      yield new Promise((a) => e.close(a)), i(t);
+    }), (r = n == null ? void 0 : n.scanTime) !== null && r !== void 0 ? r : 5e3);
+    e.on("error", (a) => {
+      e.close(), clearTimeout(o), s(a);
     });
   });
 }
-scanLAN$1.scanLAN = scanLAN;
-var sendVote$1 = {};
-var __awaiter$2 = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+Ve.scanLAN = pi;
+var Ue = {}, gi = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, Ft = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$2 = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(sendVote$1, "__esModule", { value: true });
-sendVote$1.sendVote = void 0;
-const assert_1$2 = __importDefault$2(require$$0$1);
-const crypto_1$1 = __importDefault$2(require$$1);
-const util_1$1 = require$$2;
-const TCPClient_1$2 = __importDefault$2(TCPClient$1);
-const encoder$1 = new util_1$1.TextEncoder();
-function sendVote(host, port = 8192, options) {
-  host = host.trim();
-  (0, assert_1$2.default)(typeof host === "string", `Expected 'host' to be a 'string', got '${typeof host}'`);
-  (0, assert_1$2.default)(host.length > 1, `Expected 'host' to have a length greater than 0, got ${host.length}`);
-  (0, assert_1$2.default)(typeof port === "number", `Expected 'port' to be a 'number', got '${typeof port}'`);
-  (0, assert_1$2.default)(Number.isInteger(port), `Expected 'port' to be an integer, got '${port}'`);
-  (0, assert_1$2.default)(port >= 0, `Expected 'port' to be greater than or equal to 0, got '${port}'`);
-  (0, assert_1$2.default)(port <= 65535, `Expected 'port' to be less than or equal to 65535, got '${port}'`);
-  (0, assert_1$2.default)(typeof options === "object", `Expected 'options' to be an 'object', got '${typeof options}'`);
-  (0, assert_1$2.default)(typeof options.username === "string", `Expected 'options.username' to be an 'string', got '${typeof options.username}'`);
-  (0, assert_1$2.default)(options.username.length > 1, `Expected 'options.username' to have a length greater than 0, got ${options.username.length}`);
-  (0, assert_1$2.default)(typeof options.token === "string", `Expected 'options.token' to be an 'string', got '${typeof options.token}'`);
-  (0, assert_1$2.default)(options.token.length > 1, `Expected 'options.token' to have a length greater than 0, got ${options.token.length}`);
-  return new Promise((resolve, reject) => __awaiter$2(this, void 0, void 0, function* () {
-    var _a, _b, _c, _d, _e;
-    let socket = void 0;
-    const timeout2 = setTimeout(() => {
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(new Error("Server is offline or unreachable"));
-    }, (_a = options === null || options === void 0 ? void 0 : options.timeout) !== null && _a !== void 0 ? _a : 1e3 * 5);
+Object.defineProperty(Ue, "__esModule", { value: !0 });
+Ue.sendVote = void 0;
+const U = Ft(D), yi = Ft(Le), mi = Q, vi = Ft(W), wi = new mi.TextEncoder();
+function bi(n, t = 8192, e) {
+  return n = n.trim(), (0, U.default)(typeof n == "string", `Expected 'host' to be a 'string', got '${typeof n}'`), (0, U.default)(n.length > 1, `Expected 'host' to have a length greater than 0, got ${n.length}`), (0, U.default)(typeof t == "number", `Expected 'port' to be a 'number', got '${typeof t}'`), (0, U.default)(Number.isInteger(t), `Expected 'port' to be an integer, got '${t}'`), (0, U.default)(t >= 0, `Expected 'port' to be greater than or equal to 0, got '${t}'`), (0, U.default)(t <= 65535, `Expected 'port' to be less than or equal to 65535, got '${t}'`), (0, U.default)(typeof e == "object", `Expected 'options' to be an 'object', got '${typeof e}'`), (0, U.default)(typeof e.username == "string", `Expected 'options.username' to be an 'string', got '${typeof e.username}'`), (0, U.default)(e.username.length > 1, `Expected 'options.username' to have a length greater than 0, got ${e.username.length}`), (0, U.default)(typeof e.token == "string", `Expected 'options.token' to be an 'string', got '${typeof e.token}'`), (0, U.default)(e.token.length > 1, `Expected 'options.token' to have a length greater than 0, got ${e.token.length}`), new Promise((i, s) => gi(this, void 0, void 0, function* () {
+    var r, o, a, c, l;
+    let u;
+    const d = setTimeout(() => {
+      u == null || u.close(), s(new Error("Server is offline or unreachable"));
+    }, (r = e == null ? void 0 : e.timeout) !== null && r !== void 0 ? r : 5e3);
     try {
-      socket = new TCPClient_1$2.default();
-      yield socket.connect({ host, port, timeout: (_b = options === null || options === void 0 ? void 0 : options.timeout) !== null && _b !== void 0 ? _b : 1e3 * 5 });
-      let challengeToken;
+      u = new vi.default(), yield u.connect({ host: n, port: t, timeout: (o = e == null ? void 0 : e.timeout) !== null && o !== void 0 ? o : 1e3 * 5 });
+      let f;
       {
-        const version = yield socket.readStringUntil(10);
-        const split = version.split(" ");
-        if (split[0] !== "VOTIFIER")
-          throw new Error("Not connected to a Votifier server. Expected VOTIFIER in handshake, received: " + version);
-        if (split[1] !== "2")
-          throw new Error("Unsupported Votifier version: " + split[1]);
-        challengeToken = split[2];
+        const h = yield u.readStringUntil(10), m = h.split(" ");
+        if (m[0] !== "VOTIFIER")
+          throw new Error("Not connected to a Votifier server. Expected VOTIFIER in handshake, received: " + h);
+        if (m[1] !== "2")
+          throw new Error("Unsupported Votifier version: " + m[1]);
+        f = m[2];
       }
       {
-        const payload = {
-          serviceName: (_c = options.serviceName) !== null && _c !== void 0 ? _c : "minecraft-server-util (https://github.com/PassTheMayo/minecraft-server-util)",
-          username: options.username,
-          address: (_d = options.address) !== null && _d !== void 0 ? _d : host + ":" + port,
-          timestamp: (_e = options.timestamp) !== null && _e !== void 0 ? _e : Date.now(),
-          challenge: challengeToken
+        const h = {
+          serviceName: (a = e.serviceName) !== null && a !== void 0 ? a : "minecraft-server-util (https://github.com/PassTheMayo/minecraft-server-util)",
+          username: e.username,
+          address: (c = e.address) !== null && c !== void 0 ? c : n + ":" + t,
+          timestamp: (l = e.timestamp) !== null && l !== void 0 ? l : Date.now(),
+          challenge: f
         };
-        if (options.uuid) {
-          payload.uuid = options.uuid;
-        }
-        const payloadSerialized = JSON.stringify(payload);
-        const message = {
-          payload: payloadSerialized,
-          signature: crypto_1$1.default.createHmac("sha256", options.token).update(payloadSerialized).digest("base64")
-        };
-        const messageSerialized = JSON.stringify(message);
-        const messageBytes = encoder$1.encode(messageSerialized);
-        socket.writeInt16BE(29498);
-        socket.writeInt16BE(messageBytes.byteLength);
-        socket.writeBytes(messageBytes);
-        yield socket.flush(false);
+        e.uuid && (h.uuid = e.uuid);
+        const m = JSON.stringify(h), v = {
+          payload: m,
+          signature: yi.default.createHmac("sha256", e.token).update(m).digest("base64")
+        }, g = JSON.stringify(v), w = wi.encode(g);
+        u.writeInt16BE(29498), u.writeInt16BE(w.byteLength), u.writeBytes(w), yield u.flush(!1);
       }
       {
-        const responseString = yield socket.readStringUntil(10);
-        const response = JSON.parse(responseString);
-        socket.close();
-        clearTimeout(timeout2);
-        switch (response.status) {
+        const h = yield u.readStringUntil(10), m = JSON.parse(h);
+        switch (u.close(), clearTimeout(d), m.status) {
           case "ok": {
-            resolve();
+            i();
             break;
           }
           case "error": {
-            reject(new Error(response.cause + ": " + response.error));
+            s(new Error(m.cause + ": " + m.error));
             break;
           }
           default: {
-            reject(new Error("Server sent an unknown response: " + responseString));
+            s(new Error("Server sent an unknown response: " + h));
             break;
           }
         }
       }
-    } catch (e) {
-      clearTimeout(timeout2);
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(e);
+    } catch (f) {
+      clearTimeout(d), u == null || u.close(), s(f);
     }
   }));
 }
-sendVote$1.sendVote = sendVote;
-var sendLegacyVote$1 = {};
-var __awaiter$1 = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+Ue.sendVote = bi;
+var qe = {}, Ei = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, Tt = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault$1 = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(sendLegacyVote$1, "__esModule", { value: true });
-sendLegacyVote$1.sendLegacyVote = void 0;
-const assert_1$1 = __importDefault$1(require$$0$1);
-const crypto_1 = __importDefault$1(require$$1);
-const TCPClient_1$1 = __importDefault$1(TCPClient$1);
-const wordwrap = (str, size) => str.replace(new RegExp(`(?![^\\n]{1,${size}}$)([^\\n]{1,${size}})\\s`, "g"), "$1\n");
-function sendLegacyVote(host, port = 8192, options) {
-  host = host.trim();
-  options.key = options.key.replace(/ /g, "+");
-  options.key = wordwrap(options.key, 65);
-  (0, assert_1$1.default)(typeof host === "string", `Expected 'host' to be a 'string', got '${typeof host}'`);
-  (0, assert_1$1.default)(host.length > 1, `Expected 'host' to have a length greater than 0, got ${host.length}`);
-  (0, assert_1$1.default)(typeof port === "number", `Expected 'port' to be a 'number', got '${typeof port}'`);
-  (0, assert_1$1.default)(Number.isInteger(port), `Expected 'port' to be an integer, got '${port}'`);
-  (0, assert_1$1.default)(port >= 0, `Expected 'port' to be greater than or equal to 0, got '${port}'`);
-  (0, assert_1$1.default)(port <= 65535, `Expected 'port' to be less than or equal to 65535, got '${port}'`);
-  (0, assert_1$1.default)(typeof options === "object", `Expected 'options' to be an 'object', got '${typeof options}'`);
-  (0, assert_1$1.default)(typeof options.username === "string", `Expected 'options.username' to be an 'string', got '${typeof options.username}'`);
-  (0, assert_1$1.default)(options.username.length > 1, `Expected 'options.username' to have a length greater than 0, got ${options.username.length}`);
-  (0, assert_1$1.default)(typeof options.key === "string", `Expected 'options.key' to be an 'string', got '${typeof options.key}'`);
-  (0, assert_1$1.default)(options.key.length > 1, `Expected 'options.key' to have a length greater than 0, got ${options.key.length}`);
-  return new Promise((resolve, reject) => __awaiter$1(this, void 0, void 0, function* () {
-    var _a, _b, _c, _d;
-    let socket = void 0;
-    const timeout2 = setTimeout(() => {
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(new Error("Server is offline or unreachable"));
-    }, (_a = options === null || options === void 0 ? void 0 : options.timeout) !== null && _a !== void 0 ? _a : 1e3 * 5);
+Object.defineProperty(qe, "__esModule", { value: !0 });
+qe.sendLegacyVote = void 0;
+const q = Tt(D), fr = Tt(Le), _i = Tt(W), xi = (n, t) => n.replace(new RegExp(`(?![^\\n]{1,${t}}$)([^\\n]{1,${t}})\\s`, "g"), `$1
+`);
+function Si(n, t = 8192, e) {
+  return n = n.trim(), e.key = e.key.replace(/ /g, "+"), e.key = xi(e.key, 65), (0, q.default)(typeof n == "string", `Expected 'host' to be a 'string', got '${typeof n}'`), (0, q.default)(n.length > 1, `Expected 'host' to have a length greater than 0, got ${n.length}`), (0, q.default)(typeof t == "number", `Expected 'port' to be a 'number', got '${typeof t}'`), (0, q.default)(Number.isInteger(t), `Expected 'port' to be an integer, got '${t}'`), (0, q.default)(t >= 0, `Expected 'port' to be greater than or equal to 0, got '${t}'`), (0, q.default)(t <= 65535, `Expected 'port' to be less than or equal to 65535, got '${t}'`), (0, q.default)(typeof e == "object", `Expected 'options' to be an 'object', got '${typeof e}'`), (0, q.default)(typeof e.username == "string", `Expected 'options.username' to be an 'string', got '${typeof e.username}'`), (0, q.default)(e.username.length > 1, `Expected 'options.username' to have a length greater than 0, got ${e.username.length}`), (0, q.default)(typeof e.key == "string", `Expected 'options.key' to be an 'string', got '${typeof e.key}'`), (0, q.default)(e.key.length > 1, `Expected 'options.key' to have a length greater than 0, got ${e.key.length}`), new Promise((i, s) => Ei(this, void 0, void 0, function* () {
+    var r, o, a, c;
+    let l;
+    const u = setTimeout(() => {
+      l == null || l.close(), s(new Error("Server is offline or unreachable"));
+    }, (r = e == null ? void 0 : e.timeout) !== null && r !== void 0 ? r : 5e3);
     try {
-      socket = new TCPClient_1$1.default();
-      yield socket.connect({ host, port, timeout: (_b = options === null || options === void 0 ? void 0 : options.timeout) !== null && _b !== void 0 ? _b : 1e3 * 5 });
+      l = new _i.default(), yield l.connect({ host: n, port: t, timeout: (o = e == null ? void 0 : e.timeout) !== null && o !== void 0 ? o : 1e3 * 5 });
       {
-        const version = yield socket.readStringUntil(10);
-        const split = version.split(" ");
-        if (split[0] !== "VOTIFIER")
-          throw new Error("Not connected to a Votifier server. Expected VOTIFIER in handshake, received: " + version);
+        const d = yield l.readStringUntil(10);
+        if (d.split(" ")[0] !== "VOTIFIER")
+          throw new Error("Not connected to a Votifier server. Expected VOTIFIER in handshake, received: " + d);
       }
       {
-        const timestamp = (_c = options.timestamp) !== null && _c !== void 0 ? _c : Date.now();
-        const address = (_d = options.address) !== null && _d !== void 0 ? _d : host + ":" + port;
-        const publicKey = `-----BEGIN PUBLIC KEY-----
-${options.key}
+        const d = (a = e.timestamp) !== null && a !== void 0 ? a : Date.now(), f = (c = e.address) !== null && c !== void 0 ? c : n + ":" + t, h = `-----BEGIN PUBLIC KEY-----
+${e.key}
 -----END PUBLIC KEY-----
-`;
-        const vote = `VOTE
-${options.serviceName}
-${options.username}
-${address}
-${timestamp}
-`;
-        const encryptedPayload = crypto_1.default.publicEncrypt({
-          key: publicKey,
-          padding: crypto_1.default.constants.RSA_PKCS1_PADDING
-        }, Buffer.from(vote));
-        socket.writeBytes(encryptedPayload);
-        yield socket.flush(false);
+`, m = `VOTE
+${e.serviceName}
+${e.username}
+${f}
+${d}
+`, v = fr.default.publicEncrypt({
+          key: h,
+          padding: fr.default.constants.RSA_PKCS1_PADDING
+        }, Buffer.from(m));
+        l.writeBytes(v), yield l.flush(!1);
       }
-      {
-        clearTimeout(timeout2);
-        socket.close();
-        resolve();
-      }
-    } catch (e) {
-      clearTimeout(timeout2);
-      socket === null || socket === void 0 ? void 0 : socket.close();
-      reject(e);
+      clearTimeout(u), l.close(), i();
+    } catch (d) {
+      clearTimeout(u), l == null || l.close(), s(d);
     }
   }));
 }
-sendLegacyVote$1.sendLegacyVote = sendLegacyVote;
-var RCON$1 = {};
-var __awaiter = commonjsGlobal && commonjsGlobal.__awaiter || function(thisArg, _arguments, P, generator) {
-  function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve) {
-      resolve(value);
+qe.sendLegacyVote = Si;
+var ze = {}, se = p && p.__awaiter || function(n, t, e, i) {
+  function s(r) {
+    return r instanceof e ? r : new e(function(o) {
+      o(r);
     });
   }
-  return new (P || (P = Promise))(function(resolve, reject) {
-    function fulfilled(value) {
+  return new (e || (e = Promise))(function(r, o) {
+    function a(u) {
       try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
+        l(i.next(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function rejected(value) {
+    function c(u) {
       try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
+        l(i.throw(u));
+      } catch (d) {
+        o(d);
       }
     }
-    function step(result) {
-      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    function l(u) {
+      u.done ? r(u.value) : s(u.value).then(a, c);
     }
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
+    l((i = i.apply(n, t || [])).next());
   });
+}, Ur = p && p.__importDefault || function(n) {
+  return n && n.__esModule ? n : { default: n };
 };
-var __importDefault = commonjsGlobal && commonjsGlobal.__importDefault || function(mod) {
-  return mod && mod.__esModule ? mod : { "default": mod };
-};
-Object.defineProperty(RCON$1, "__esModule", { value: true });
-RCON$1.RCON = void 0;
-const assert_1 = __importDefault(require$$0$1);
-const events_1 = require$$1$1;
-const util_1 = require$$2;
-const TCPClient_1 = __importDefault(TCPClient$1);
-const encoder = new util_1.TextEncoder();
-class RCON extends events_1.EventEmitter {
+Object.defineProperty(ze, "__esModule", { value: !0 });
+ze.RCON = void 0;
+const k = Ur(D), Ii = ue, $i = Q, Bi = Ur(W), hr = new $i.TextEncoder();
+class Li extends Ii.EventEmitter {
   constructor() {
-    super();
-    this.isLoggedIn = false;
-    this.socket = null;
-    this.requestID = 0;
+    super(), this.isLoggedIn = !1, this.socket = null, this.requestID = 0;
   }
   get isConnected() {
-    return this.socket && this.socket.isConnected || false;
+    return this.socket && this.socket.isConnected || !1;
   }
-  connect(host, port = 25575, options = {}) {
-    (0, assert_1.default)(typeof host === "string", `Expected 'host' to be a 'string', got '${typeof host}'`);
-    (0, assert_1.default)(host.length > 1, `Expected 'host' to have a length greater than 0, got ${host.length}`);
-    (0, assert_1.default)(typeof port === "number", `Expected 'port' to be a 'number', got '${typeof port}'`);
-    (0, assert_1.default)(Number.isInteger(port), `Expected 'port' to be an integer, got '${port}'`);
-    (0, assert_1.default)(port >= 0, `Expected 'port' to be greater than or equal to 0, got '${port}'`);
-    (0, assert_1.default)(port <= 65535, `Expected 'port' to be less than or equal to 65535, got '${port}'`);
-    (0, assert_1.default)(typeof options === "object", `Expected 'options' to be an 'object', got '${typeof options}'`);
-    return new Promise((resolve, reject) => {
-      var _a;
-      this.socket = new TCPClient_1.default();
-      const timeout2 = setTimeout(() => {
-        var _a2;
-        reject(new Error("Server is offline or unreachable"));
-        (_a2 = this.socket) === null || _a2 === void 0 ? void 0 : _a2.close();
-      }, (_a = options === null || options === void 0 ? void 0 : options.timeout) !== null && _a !== void 0 ? _a : 1e3 * 5);
-      this.socket.connect(Object.assign({ host, port }, options)).then(() => {
-        clearTimeout(timeout2);
-        resolve();
-      }).catch((error) => {
-        clearTimeout(timeout2);
-        reject(error);
+  connect(t, e = 25575, i = {}) {
+    return (0, k.default)(typeof t == "string", `Expected 'host' to be a 'string', got '${typeof t}'`), (0, k.default)(t.length > 1, `Expected 'host' to have a length greater than 0, got ${t.length}`), (0, k.default)(typeof e == "number", `Expected 'port' to be a 'number', got '${typeof e}'`), (0, k.default)(Number.isInteger(e), `Expected 'port' to be an integer, got '${e}'`), (0, k.default)(e >= 0, `Expected 'port' to be greater than or equal to 0, got '${e}'`), (0, k.default)(e <= 65535, `Expected 'port' to be less than or equal to 65535, got '${e}'`), (0, k.default)(typeof i == "object", `Expected 'options' to be an 'object', got '${typeof i}'`), new Promise((s, r) => {
+      var o;
+      this.socket = new Bi.default();
+      const a = setTimeout(() => {
+        var c;
+        r(new Error("Server is offline or unreachable")), (c = this.socket) === null || c === void 0 || c.close();
+      }, (o = i == null ? void 0 : i.timeout) !== null && o !== void 0 ? o : 1e3 * 5);
+      this.socket.connect(Object.assign({ host: t, port: e }, i)).then(() => {
+        clearTimeout(a), s();
+      }).catch((c) => {
+        clearTimeout(a), r(c);
       });
     });
   }
-  login(password, options = {}) {
-    (0, assert_1.default)(typeof password === "string", `Expected 'password' to be a 'string', got '${typeof password}'`);
-    (0, assert_1.default)(password.length > 1, `Expected 'password' to have a length greater than 0, got ${password.length}`);
-    (0, assert_1.default)(typeof options === "object", `Expected 'options' to be an 'object', got '${typeof options}'`);
-    return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
-      var _a;
+  login(t, e = {}) {
+    return (0, k.default)(typeof t == "string", `Expected 'password' to be a 'string', got '${typeof t}'`), (0, k.default)(t.length > 1, `Expected 'password' to have a length greater than 0, got ${t.length}`), (0, k.default)(typeof e == "object", `Expected 'options' to be an 'object', got '${typeof e}'`), new Promise((i, s) => se(this, void 0, void 0, function* () {
+      var r;
       if (this.socket === null || !this.socket.isConnected)
-        return reject(new Error("login() attempted before RCON has connected"));
-      const timeout2 = setTimeout(() => {
-        var _a2;
-        reject(new Error("Server is offline or unreachable"));
-        (_a2 = this.socket) === null || _a2 === void 0 ? void 0 : _a2.close();
-      }, (_a = options === null || options === void 0 ? void 0 : options.timeout) !== null && _a !== void 0 ? _a : 1e3 * 5);
-      this.isLoggedIn = false;
-      const passwordBytes = encoder.encode(password);
+        return s(new Error("login() attempted before RCON has connected"));
+      const o = setTimeout(() => {
+        var c;
+        s(new Error("Server is offline or unreachable")), (c = this.socket) === null || c === void 0 || c.close();
+      }, (r = e == null ? void 0 : e.timeout) !== null && r !== void 0 ? r : 1e3 * 5);
+      this.isLoggedIn = !1;
+      const a = hr.encode(t);
+      this.socket.writeInt32LE(10 + a.byteLength), this.socket.writeInt32LE(this.requestID++), this.socket.writeInt32LE(3), this.socket.writeBytes(a), this.socket.writeBytes(Uint8Array.from([0, 0])), yield this.socket.flush(!1);
       {
-        this.socket.writeInt32LE(10 + passwordBytes.byteLength);
-        this.socket.writeInt32LE(this.requestID++);
-        this.socket.writeInt32LE(3);
-        this.socket.writeBytes(passwordBytes);
-        this.socket.writeBytes(Uint8Array.from([0, 0]));
-        yield this.socket.flush(false);
+        const c = yield this.socket.readInt32LE();
+        this.socket.ensureBufferedData(c), (yield this.socket.readInt32LE()) === -1 && s(new Error("Invalid RCON password"));
+        const u = yield this.socket.readInt32LE();
+        u !== 2 && s(new Error("Expected server to send packet type 2, received " + u)), yield this.socket.readBytes(2);
       }
-      {
-        const packetLength = yield this.socket.readInt32LE();
-        this.socket.ensureBufferedData(packetLength);
-        const requestID = yield this.socket.readInt32LE();
-        if (requestID === -1)
-          reject(new Error("Invalid RCON password"));
-        const packetType = yield this.socket.readInt32LE();
-        if (packetType !== 2)
-          reject(new Error("Expected server to send packet type 2, received " + packetType));
-        yield this.socket.readBytes(2);
-      }
-      this.isLoggedIn = true;
-      clearTimeout(timeout2);
-      resolve();
-      process.nextTick(() => __awaiter(this, void 0, void 0, function* () {
-        while (this.socket !== null && this.socket.isConnected && this.isLoggedIn) {
+      this.isLoggedIn = !0, clearTimeout(o), i(), process.nextTick(() => se(this, void 0, void 0, function* () {
+        for (; this.socket !== null && this.socket.isConnected && this.isLoggedIn; )
           try {
             yield this._readPacket();
-          } catch (e) {
-            this.emit("error", e);
+          } catch (c) {
+            this.emit("error", c);
           }
-        }
       }));
     }));
   }
-  run(command) {
-    return __awaiter(this, void 0, void 0, function* () {
-      (0, assert_1.default)(typeof command === "string", `Expected 'command' to be a 'string', got '${typeof command}'`);
-      (0, assert_1.default)(command.length > 0, `Expected 'command' to have a length greater than 0, got ${command.length}`);
-      if (this.socket === null || !this.socket.isConnected)
+  run(t) {
+    return se(this, void 0, void 0, function* () {
+      if ((0, k.default)(typeof t == "string", `Expected 'command' to be a 'string', got '${typeof t}'`), (0, k.default)(t.length > 0, `Expected 'command' to have a length greater than 0, got ${t.length}`), this.socket === null || !this.socket.isConnected)
         throw new Error("run() attempted before RCON has connected");
       if (!this.isLoggedIn)
         throw new Error("run() attempted before RCON has successfully logged in");
-      const commandBytes = encoder.encode(command);
-      const requestID = this.requestID++;
-      this.socket.writeInt32LE(10 + commandBytes.byteLength);
-      this.socket.writeInt32LE(requestID);
-      this.socket.writeInt32LE(2);
-      this.socket.writeBytes(commandBytes);
-      this.socket.writeBytes(Uint8Array.from([0, 0]));
-      yield this.socket.flush(false);
-      return requestID;
+      const e = hr.encode(t), i = this.requestID++;
+      return this.socket.writeInt32LE(10 + e.byteLength), this.socket.writeInt32LE(i), this.socket.writeInt32LE(2), this.socket.writeBytes(e), this.socket.writeBytes(Uint8Array.from([0, 0])), yield this.socket.flush(!1), i;
     });
   }
-  execute(command) {
-    return __awaiter(this, void 0, void 0, function* () {
-      (0, assert_1.default)(typeof command === "string", `Expected 'command' to be a 'string', got '${typeof command}'`);
-      (0, assert_1.default)(command.length > 1, `Expected 'command' to have a length greater than 0, got ${command.length}`);
-      const requestID = yield this.run(command);
-      return new Promise((resolve) => {
-        const listenerFunc = (data) => {
-          if (data.requestID !== requestID)
-            return;
-          this.removeListener("message", listenerFunc);
-          resolve(data.message);
+  execute(t) {
+    return se(this, void 0, void 0, function* () {
+      (0, k.default)(typeof t == "string", `Expected 'command' to be a 'string', got '${typeof t}'`), (0, k.default)(t.length > 1, `Expected 'command' to have a length greater than 0, got ${t.length}`);
+      const e = yield this.run(t);
+      return new Promise((i) => {
+        const s = (r) => {
+          r.requestID === e && (this.removeListener("message", s), i(r.message));
         };
-        this.on("message", listenerFunc);
+        this.on("message", s);
       });
     });
   }
   _readPacket() {
-    return __awaiter(this, void 0, void 0, function* () {
+    return se(this, void 0, void 0, function* () {
       if (this.socket === null || !this.socket.isConnected || !this.isLoggedIn)
         return Promise.reject(new Error("Attempted to read packet when socket was disconnected or RCON was not logged in"));
-      const packetLength = yield this.socket.readInt32LE();
-      yield this.socket.ensureBufferedData(packetLength);
-      const requestID = yield this.socket.readInt32LE();
-      const packetType = yield this.socket.readInt32LE();
-      if (packetType === 0) {
-        const message = yield this.socket.readStringNT();
-        yield this.socket.readBytes(1);
-        this.emit("message", { requestID, message });
-      } else {
-        yield this.socket.readBytes(packetLength - 8);
-      }
+      const t = yield this.socket.readInt32LE();
+      yield this.socket.ensureBufferedData(t);
+      const e = yield this.socket.readInt32LE();
+      if ((yield this.socket.readInt32LE()) === 0) {
+        const s = yield this.socket.readStringNT();
+        yield this.socket.readBytes(1), this.emit("message", { requestID: e, message: s });
+      } else
+        yield this.socket.readBytes(t - 8);
     });
   }
   close() {
-    var _a;
-    (_a = this.socket) === null || _a === void 0 ? void 0 : _a.close();
+    var t;
+    (t = this.socket) === null || t === void 0 || t.close();
   }
 }
-RCON$1.RCON = RCON;
-var parseAddress$1 = {};
-Object.defineProperty(parseAddress$1, "__esModule", { value: true });
-parseAddress$1.parseAddress = void 0;
-const addressMatch = /^([^:]+)(?::(\d{1,5}))?$/;
-function parseAddress(value, defaultPort = 25565) {
-  const match = value.match(addressMatch);
-  if (!match)
+ze.RCON = Li;
+var He = {};
+Object.defineProperty(He, "__esModule", { value: !0 });
+He.parseAddress = void 0;
+const Di = /^([^:]+)(?::(\d{1,5}))?$/;
+function Pi(n, t = 25565) {
+  const e = n.match(Di);
+  if (!e)
     return null;
-  const port = match[2] ? parseInt(match[2]) : defaultPort;
-  if (isNaN(port) || port < 1 || port > 65535)
-    return null;
-  return {
-    host: match[1],
-    port
+  const i = e[2] ? parseInt(e[2]) : t;
+  return isNaN(i) || i < 1 || i > 65535 ? null : {
+    host: e[1],
+    port: i
   };
 }
-parseAddress$1.parseAddress = parseAddress;
-var BedrockStatusOptions = {};
-Object.defineProperty(BedrockStatusOptions, "__esModule", { value: true });
-var BedrockStatusResponse = {};
-Object.defineProperty(BedrockStatusResponse, "__esModule", { value: true });
-var JavaStatusFE01FAResponse = {};
-Object.defineProperty(JavaStatusFE01FAResponse, "__esModule", { value: true });
-var JavaStatusFE01Response = {};
-Object.defineProperty(JavaStatusFE01Response, "__esModule", { value: true });
-var JavaStatusFEResponse = {};
-Object.defineProperty(JavaStatusFEResponse, "__esModule", { value: true });
-var JavaStatusLegacyResponse = {};
-Object.defineProperty(JavaStatusLegacyResponse, "__esModule", { value: true });
-var JavaStatusOptions = {};
-Object.defineProperty(JavaStatusOptions, "__esModule", { value: true });
-var JavaStatusResponse = {};
-Object.defineProperty(JavaStatusResponse, "__esModule", { value: true });
-var QueryOptions = {};
-Object.defineProperty(QueryOptions, "__esModule", { value: true });
-var SendVoteOptions = {};
-Object.defineProperty(SendVoteOptions, "__esModule", { value: true });
-var SendLegacyVoteOptions = {};
-Object.defineProperty(SendLegacyVoteOptions, "__esModule", { value: true });
-var SRVRecord = {};
-Object.defineProperty(SRVRecord, "__esModule", { value: true });
-(function(exports$1) {
-  var __createBinding = commonjsGlobal && commonjsGlobal.__createBinding || (Object.create ? function(o, m, k, k2) {
-    if (k2 === void 0) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() {
-        return m[k];
-      } };
-    }
-    Object.defineProperty(o, k2, desc);
-  } : function(o, m, k, k2) {
-    if (k2 === void 0) k2 = k;
-    o[k2] = m[k];
-  });
-  var __exportStar = commonjsGlobal && commonjsGlobal.__exportStar || function(m, exports$12) {
-    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports$12, p)) __createBinding(exports$12, m, p);
+He.parseAddress = Pi;
+var qr = {};
+Object.defineProperty(qr, "__esModule", { value: !0 });
+var zr = {};
+Object.defineProperty(zr, "__esModule", { value: !0 });
+var Hr = {};
+Object.defineProperty(Hr, "__esModule", { value: !0 });
+var Wr = {};
+Object.defineProperty(Wr, "__esModule", { value: !0 });
+var Jr = {};
+Object.defineProperty(Jr, "__esModule", { value: !0 });
+var Gr = {};
+Object.defineProperty(Gr, "__esModule", { value: !0 });
+var Kr = {};
+Object.defineProperty(Kr, "__esModule", { value: !0 });
+var Yr = {};
+Object.defineProperty(Yr, "__esModule", { value: !0 });
+var Qr = {};
+Object.defineProperty(Qr, "__esModule", { value: !0 });
+var Zr = {};
+Object.defineProperty(Zr, "__esModule", { value: !0 });
+var Xr = {};
+Object.defineProperty(Xr, "__esModule", { value: !0 });
+var en = {};
+Object.defineProperty(en, "__esModule", { value: !0 });
+(function(n) {
+  var t = p && p.__createBinding || (Object.create ? function(i, s, r, o) {
+    o === void 0 && (o = r);
+    var a = Object.getOwnPropertyDescriptor(s, r);
+    (!a || ("get" in a ? !s.__esModule : a.writable || a.configurable)) && (a = { enumerable: !0, get: function() {
+      return s[r];
+    } }), Object.defineProperty(i, o, a);
+  } : function(i, s, r, o) {
+    o === void 0 && (o = r), i[o] = s[r];
+  }), e = p && p.__exportStar || function(i, s) {
+    for (var r in i) r !== "default" && !Object.prototype.hasOwnProperty.call(s, r) && t(s, i, r);
   };
-  Object.defineProperty(exports$1, "__esModule", { value: true });
-  __exportStar(status$1, exports$1);
-  __exportStar(statusFE$1, exports$1);
-  __exportStar(statusFE01$1, exports$1);
-  __exportStar(statusFE01FA$1, exports$1);
-  __exportStar(statusLegacy$1, exports$1);
-  __exportStar(statusBedrock$1, exports$1);
-  __exportStar(queryBasic$1, exports$1);
-  __exportStar(queryFull$1, exports$1);
-  __exportStar(scanLAN$1, exports$1);
-  __exportStar(sendVote$1, exports$1);
-  __exportStar(sendLegacyVote$1, exports$1);
-  __exportStar(RCON$1, exports$1);
-  __exportStar(parseAddress$1, exports$1);
-  __exportStar(BedrockStatusOptions, exports$1);
-  __exportStar(BedrockStatusResponse, exports$1);
-  __exportStar(JavaStatusFE01FAResponse, exports$1);
-  __exportStar(JavaStatusFE01Response, exports$1);
-  __exportStar(JavaStatusFEResponse, exports$1);
-  __exportStar(JavaStatusLegacyResponse, exports$1);
-  __exportStar(JavaStatusOptions, exports$1);
-  __exportStar(JavaStatusResponse, exports$1);
-  __exportStar(QueryOptions, exports$1);
-  __exportStar(SendVoteOptions, exports$1);
-  __exportStar(SendLegacyVoteOptions, exports$1);
-  __exportStar(SRVRecord, exports$1);
-})(dist$1);
-async function getMinecraftServerStatus(host, port, timeout2 = 5e3) {
+  Object.defineProperty(n, "__esModule", { value: !0 }), e(Pe, n), e(Ae, n), e(Re, n), e(Oe, n), e(Ce, n), e(je, n), e(Ne, n), e(Me, n), e(Ve, n), e(Ue, n), e(qe, n), e(ze, n), e(He, n), e(qr, n), e(zr, n), e(Hr, n), e(Wr, n), e(Jr, n), e(Gr, n), e(Kr, n), e(Yr, n), e(Qr, n), e(Zr, n), e(Xr, n), e(en, n);
+})(Lr);
+async function ki(n, t, e = 5e3) {
   try {
-    const result = await dist$1.status(host, port, { timeout: timeout2 });
-    return result;
-  } catch (error) {
-    console.error(`获取 Minecraft 服务器状态失败: ${error}`);
-    throw error;
+    return await Lr.status(n, t, { timeout: e });
+  } catch (i) {
+    throw E.error("获取 Minecraft 状态失败", i), i;
   }
 }
-class Locked extends Error {
-  constructor(port) {
-    super(`${port} is locked`);
+class pr extends Error {
+  constructor(t) {
+    super(`${t} is locked`);
   }
 }
-const lockedPorts = {
+const ne = {
   old: /* @__PURE__ */ new Set(),
   young: /* @__PURE__ */ new Set()
-};
-const releaseOldLockedPortsIntervalMs = 1e3 * 15;
-let timeout;
-const getLocalHosts = () => {
-  const interfaces = os$1.networkInterfaces();
-  const results = /* @__PURE__ */ new Set([void 0, "0.0.0.0"]);
-  for (const _interface of Object.values(interfaces)) {
-    for (const config2 of _interface) {
-      results.add(config2.address);
-    }
-  }
-  return results;
-};
-const checkAvailablePort = (options) => new Promise((resolve, reject) => {
-  const server = net$1.createServer();
-  server.unref();
-  server.on("error", reject);
-  server.listen(options, () => {
-    const { port } = server.address();
-    server.close(() => {
-      resolve(port);
+}, Fi = 1e3 * 15;
+let ce;
+const Ti = () => {
+  const n = vn.networkInterfaces(), t = /* @__PURE__ */ new Set([void 0, "0.0.0.0"]);
+  for (const e of Object.values(n))
+    for (const i of e)
+      t.add(i.address);
+  return t;
+}, gr = (n) => new Promise((t, e) => {
+  const i = mn.createServer();
+  i.unref(), i.on("error", e), i.listen(n, () => {
+    const { port: s } = i.address();
+    i.close(() => {
+      t(s);
     });
   });
-});
-const getAvailablePort = async (options, hosts) => {
-  if (options.host || options.port === 0) {
-    return checkAvailablePort(options);
-  }
-  for (const host of hosts) {
+}), yr = async (n, t) => {
+  if (n.host || n.port === 0)
+    return gr(n);
+  for (const e of t)
     try {
-      await checkAvailablePort({ port: options.port, host });
-    } catch (error) {
-      if (!["EADDRNOTAVAIL", "EINVAL"].includes(error.code)) {
-        throw error;
-      }
+      await gr({ port: n.port, host: e });
+    } catch (i) {
+      if (!["EADDRNOTAVAIL", "EINVAL"].includes(i.code))
+        throw i;
     }
-  }
-  return options.port;
+  return n.port;
+}, Ai = function* (n) {
+  n && (yield* n), yield 0;
 };
-const portCheckSequence = function* (ports) {
-  if (ports) {
-    yield* ports;
-  }
-  yield 0;
-};
-async function getPorts(options) {
-  let ports;
-  let exclude = /* @__PURE__ */ new Set();
-  if (options) {
-    if (options.port) {
-      ports = typeof options.port === "number" ? [options.port] : options.port;
+async function Ri(n) {
+  let t, e = /* @__PURE__ */ new Set();
+  if (n && (n.port && (t = typeof n.port == "number" ? [n.port] : n.port), n.exclude)) {
+    const s = n.exclude;
+    if (typeof s[Symbol.iterator] != "function")
+      throw new TypeError("The `exclude` option must be an iterable.");
+    for (const r of s) {
+      if (typeof r != "number")
+        throw new TypeError("Each item in the `exclude` option must be a number corresponding to the port you want excluded.");
+      if (!Number.isSafeInteger(r))
+        throw new TypeError(`Number ${r} in the exclude option is not a safe integer and can't be used`);
     }
-    if (options.exclude) {
-      const excludeIterable = options.exclude;
-      if (typeof excludeIterable[Symbol.iterator] !== "function") {
-        throw new TypeError("The `exclude` option must be an iterable.");
-      }
-      for (const element of excludeIterable) {
-        if (typeof element !== "number") {
-          throw new TypeError("Each item in the `exclude` option must be a number corresponding to the port you want excluded.");
-        }
-        if (!Number.isSafeInteger(element)) {
-          throw new TypeError(`Number ${element} in the exclude option is not a safe integer and can't be used`);
-        }
-      }
-      exclude = new Set(excludeIterable);
-    }
+    e = new Set(s);
   }
-  if (timeout === void 0) {
-    timeout = setTimeout(() => {
-      timeout = void 0;
-      lockedPorts.old = lockedPorts.young;
-      lockedPorts.young = /* @__PURE__ */ new Set();
-    }, releaseOldLockedPortsIntervalMs);
-    if (timeout.unref) {
-      timeout.unref();
-    }
-  }
-  const hosts = getLocalHosts();
-  for (const port of portCheckSequence(ports)) {
+  ce === void 0 && (ce = setTimeout(() => {
+    ce = void 0, ne.old = ne.young, ne.young = /* @__PURE__ */ new Set();
+  }, Fi), ce.unref && ce.unref());
+  const i = Ti();
+  for (const s of Ai(t))
     try {
-      if (exclude.has(port)) {
+      if (e.has(s))
         continue;
+      let r = await yr({ ...n, port: s }, i);
+      for (; ne.old.has(r) || ne.young.has(r); ) {
+        if (s !== 0)
+          throw new pr(s);
+        r = await yr({ ...n, port: s }, i);
       }
-      let availablePort = await getAvailablePort({ ...options, port }, hosts);
-      while (lockedPorts.old.has(availablePort) || lockedPorts.young.has(availablePort)) {
-        if (port !== 0) {
-          throw new Locked(port);
-        }
-        availablePort = await getAvailablePort({ ...options, port }, hosts);
-      }
-      lockedPorts.young.add(availablePort);
-      return availablePort;
-    } catch (error) {
-      if (!["EADDRINUSE", "EACCES"].includes(error.code) && !(error instanceof Locked)) {
-        throw error;
-      }
+      return ne.young.add(r), r;
+    } catch (r) {
+      if (!["EADDRINUSE", "EACCES"].includes(r.code) && !(r instanceof pr))
+        throw r;
     }
-  }
   throw new Error("No available ports found");
 }
-function portNumbers(from, to) {
-  if (!Number.isInteger(from) || !Number.isInteger(to)) {
+function Oi(n, t) {
+  if (!Number.isInteger(n) || !Number.isInteger(t))
     throw new TypeError("`from` and `to` must be integer numbers");
-  }
-  const generator = function* (from2, to2) {
-    for (let port = from2; port <= to2; port++) {
-      yield port;
-    }
-  };
-  return generator(from, to);
+  return function* (i, s) {
+    for (let r = i; r <= s; r++)
+      yield r;
+  }(n, t);
 }
-class MinecraftLanProxy {
-  constructor(config2) {
-    __publicField(this, "config");
-    __publicField(this, "udpClient", null);
-    __publicField(this, "tcpServer", null);
-    __publicField(this, "broadcastTimer", null);
-    __publicField(this, "activeConnections", /* @__PURE__ */ new Set());
-    this.config = config2;
+class Ci {
+  constructor(t) {
+    y(this, "config");
+    y(this, "udpClient", null);
+    y(this, "tcpServer", null);
+    y(this, "broadcastTimer", null);
+    y(this, "activeConnections", /* @__PURE__ */ new Set());
+    this.config = t;
   }
   async start() {
-    const port = await getPorts({ port: portNumbers(2e4, 65535) });
-    if (!this.config.localPort) {
-      this.config.localPort = port;
-      console.log(`使用随机端口 ${port}`);
-    }
-    return new Promise((resolve, reject) => {
-      this.startWithRetry(resolve, reject);
+    const t = await Ri({ port: Oi(2e4, 65535) });
+    return this.config.localPort || (this.config.localPort = t, console.log(`使用随机端口 ${t}`)), new Promise((e, i) => {
+      this.startWithRetry(e, i);
     });
   }
   /**
   * 内部递归启动函数
   */
-  startWithRetry(resolve, reject) {
+  startWithRetry(t, e) {
     try {
-      this.cleanupTempResources();
-      this.startTcpProxy(
+      this.cleanupTempResources(), this.startTcpProxy(
         () => {
-          this.startUdpBroadcaster();
-          resolve();
+          this.startUdpBroadcaster(), t();
         },
-        async (err) => {
-          if (err.code === "EADDRINUSE") {
-            console.warn(`[*] 端口 ${this.config.localPort} 被占用，尝试自动递增...`);
-            this.config.localPort += 1;
-            if (this.config.localPort > 65535) {
-              this.config.localPort = 2e4;
-            }
-            setTimeout(() => this.startWithRetry(resolve, reject), 10);
-          } else {
-            reject(err);
-          }
+        async (i) => {
+          i.code === "EADDRINUSE" ? (console.warn(`[*] 端口 ${this.config.localPort} 被占用，尝试自动递增...`), this.config.localPort += 1, this.config.localPort > 65535 && (this.config.localPort = 2e4), setTimeout(() => this.startWithRetry(t, e), 10)) : e(i);
         }
       );
-    } catch (err) {
-      reject(err);
+    } catch (i) {
+      e(i);
     }
   }
   startUdpBroadcaster() {
-    const MCAST_GRP = "224.0.2.60";
-    const MCAST_PORT = 4445;
-    const message = Buffer.from(`[MOTD]${this.config.fakeMotd}[/MOTD][AD]${this.config.localPort}[/AD]`);
-    this.udpClient = require$$0.createSocket({ type: "udp4", reuseAddr: true });
-    this.udpClient.on("error", (err) => console.error(`[UDP Error] ${err.message}`));
-    this.broadcastTimer = setInterval(() => {
-      if (this.udpClient) {
-        this.udpClient.send(message, 0, message.length, MCAST_PORT, MCAST_GRP);
-      }
-    }, 1500);
-    console.log(`[*] ID: ${this.config.id} UDP 广播已启动`);
+    const t = "224.0.2.60", i = Buffer.from(`[MOTD]${this.config.fakeMotd}[/MOTD][AD]${this.config.localPort}[/AD]`);
+    this.udpClient = yn.createSocket({ type: "udp4", reuseAddr: !0 }), this.udpClient.on("error", (s) => console.error(`[UDP Error] ${s.message}`)), this.broadcastTimer = setInterval(() => {
+      this.udpClient && this.udpClient.send(i, 0, i.length, 4445, t);
+    }, 1500), console.log(`[*] ID: ${this.config.id} UDP 广播已启动`);
   }
-  startTcpProxy(resolve, reject) {
-    this.tcpServer = net.createServer((clientSocket) => {
-      const remoteSocket = new net.Socket();
-      this.activeConnections.add(clientSocket);
-      this.activeConnections.add(remoteSocket);
-      const closeSockets = () => {
-        clientSocket.destroy();
-        remoteSocket.destroy();
-        this.activeConnections.delete(clientSocket);
-        this.activeConnections.delete(remoteSocket);
+  startTcpProxy(t, e) {
+    this.tcpServer = Rt.createServer((i) => {
+      const s = new Rt.Socket();
+      this.activeConnections.add(i), this.activeConnections.add(s);
+      const r = () => {
+        i.destroy(), s.destroy(), this.activeConnections.delete(i), this.activeConnections.delete(s);
       };
-      clientSocket.pause();
-      remoteSocket.connect(this.config.remotePort, this.config.remoteHost, () => {
-        clientSocket.resume();
-        clientSocket.pipe(remoteSocket);
-        remoteSocket.pipe(clientSocket);
-      });
-      clientSocket.once("data", (data) => {
+      i.pause(), s.connect(this.config.remotePort, this.config.remoteHost, () => {
+        i.resume(), i.pipe(s), s.pipe(i);
+      }), i.once("data", (o) => {
         try {
-          const strData = data.toString("utf8", 0, 100);
-          const match = strData.match(/[a-zA-Z0-9_]{3,16}/);
-          if (match) {
-            console.log(`[*] 识别到可能的玩家名: ${match[0]}`);
-          }
-        } catch (e) {
+          const c = o.toString("utf8", 0, 100).match(/[a-zA-Z0-9_]{3,16}/);
+          c && console.log(`[*] 识别到可能的玩家名: ${c[0]}`);
+        } catch {
         }
+      }), i.on("error", r), s.on("error", r), i.on("close", r), s.on("close", r), i.setTimeout(3e4), i.on("timeout", () => {
+        console.log("[Proxy] 连接超时已切断"), r();
       });
-      clientSocket.on("error", closeSockets);
-      remoteSocket.on("error", closeSockets);
-      clientSocket.on("close", closeSockets);
-      remoteSocket.on("close", closeSockets);
-      clientSocket.setTimeout(3e4);
-      clientSocket.on("timeout", () => {
-        console.log(`[Proxy] 连接超时已切断`);
-        closeSockets();
-      });
-    });
-    this.tcpServer.on("error", (err) => {
-      if (err.code === "EADDRINUSE") {
-        reject(new Error(`端口 ${this.config.localPort} 已被占用`));
-      } else {
-        reject(err);
-      }
-    });
-    this.tcpServer.listen(this.config.localPort, "0.0.0.0", () => {
-      console.log(`[*] TCP 代理就绪: ${this.config.localPort} -> ${this.config.remoteHost}`);
-      resolve();
+    }), this.tcpServer.on("error", (i) => {
+      i.code === "EADDRINUSE" ? e(new Error(`端口 ${this.config.localPort} 已被占用`)) : e(i);
+    }), this.tcpServer.listen(this.config.localPort, "0.0.0.0", () => {
+      console.log(`[*] TCP 代理就绪: ${this.config.localPort} -> ${this.config.remoteHost}`), t();
     });
   }
   stop() {
-    var _a, _b;
-    if (this.broadcastTimer) clearInterval(this.broadcastTimer);
-    (_a = this.udpClient) == null ? void 0 : _a.close();
-    (_b = this.tcpServer) == null ? void 0 : _b.close(() => {
+    var t, e;
+    this.broadcastTimer && clearInterval(this.broadcastTimer), (t = this.udpClient) == null || t.close(), (e = this.tcpServer) == null || e.close(() => {
       console.log(`[*] 代理实例 ${this.config.id} 已完全停止`);
     });
-    for (const socket of this.activeConnections) {
-      socket.destroy();
-    }
+    for (const i of this.activeConnections)
+      i.destroy();
     this.activeConnections.clear();
   }
   /**
    * 清理函数：确保递归重试时不会留下半开的服务器
    */
   cleanupTempResources() {
-    if (this.broadcastTimer) {
-      clearInterval(this.broadcastTimer);
-      this.broadcastTimer = null;
-    }
-    if (this.udpClient) {
-      this.udpClient.close();
-      this.udpClient = null;
-    }
+    this.broadcastTimer && (clearInterval(this.broadcastTimer), this.broadcastTimer = null), this.udpClient && (this.udpClient.close(), this.udpClient = null);
   }
 }
-class ProxyManager {
+class ji {
   constructor() {
-    __publicField(this, "instances", /* @__PURE__ */ new Map());
+    y(this, "instances", /* @__PURE__ */ new Map());
   }
   init() {
-    ipcMain.on("mcproxy:start", async (event, config2) => {
-      if (this.instances.has(config2.id)) {
-        event.reply("mcproxy:status", { id: config2.id, success: false, message: "该 ID 的实例已在运行", localPort: config2.localPort });
+    Ie.on("mcproxy:start", async (t, e) => {
+      if (this.instances.has(e.id)) {
+        t.reply("mcproxy:status", { id: e.id, success: !1, message: "该 ID 的实例已在运行", localPort: e.localPort });
         return;
       }
-      const proxy = new MinecraftLanProxy(config2);
+      const i = new Ci(e);
       try {
-        await proxy.start();
-        this.instances.set(config2.id, proxy);
-        event.reply("mcproxy:status", { id: config2.id, success: true, message: "启动成功", localPort: config2.localPort });
-      } catch (err) {
-        event.reply("mcproxy:status", { id: config2.id, success: false, message: err.message });
+        await i.start(), this.instances.set(e.id, i), t.reply("mcproxy:status", { id: e.id, success: !0, message: "启动成功", localPort: e.localPort });
+      } catch (s) {
+        t.reply("mcproxy:status", { id: e.id, success: !1, message: s.message });
       }
-    });
-    ipcMain.on("mcproxy:stop", (event, id) => {
-      const proxy = this.instances.get(id);
-      if (proxy) {
-        proxy.stop();
-        this.instances.delete(id);
-        event.reply("mcproxy:status", { id, success: false, message: "已停止" });
-      }
+    }), Ie.on("mcproxy:stop", (t, e) => {
+      const i = this.instances.get(e);
+      i && (i.stop(), this.instances.delete(e), t.reply("mcproxy:status", { id: e, success: !1, message: "已停止" }));
     });
   }
 }
-const proxyManager = new ProxyManager();
-const config = new Config();
-const downloader = new SakuraFrpDownloader();
-proxyManager.init();
-function loadIcpMain(ipcMain2, win2) {
-  const frpc = new SakuraFrpcManager(win2);
-  ipcMain2.handle("network:tcp", async (_event, host, port) => {
-    const targetPort = parseInt(String(port), 10);
-    const targetHost = String(host || "").trim();
-    if (isNaN(targetPort) || targetPort <= 0 || targetPort > 65535) {
-      console.error(`无效的端口: ${port}`);
-      return -1;
-    }
-    if (!targetHost) {
-      console.error(`无效的地址: ${host}`);
-      return -1;
-    }
-    return new Promise((resolve) => {
-      const socket = new net__default.Socket();
-      const start = Date.now();
-      socket.setTimeout(2e3);
-      socket.connect({ port: targetPort, host: targetHost }, () => {
-        const delay = Date.now() - start;
-        socket.destroy();
-        resolve(delay);
+const Ni = new ji(), oe = new _n(), It = new Yn();
+Ni.init();
+function Mi(n, t) {
+  const e = new Qn(t);
+  n.handle("network:tcp", async (i, s, r) => {
+    E.info(`开始测试TCP连接: ${s}:${r}`);
+    const o = parseInt(String(r), 10), a = String(s || "").trim();
+    return isNaN(o) || o <= 0 || o > 65535 ? (E.error(`无效的端口: ${r}`), -1) : a ? new Promise((c) => {
+      const l = new wr.Socket(), u = Date.now();
+      l.setTimeout(2e3), l.connect({ port: o, host: a }, () => {
+        const f = Date.now() - u;
+        l.destroy(), c(f);
       });
-      const handleError = () => {
-        socket.destroy();
-        resolve(-1);
+      const d = () => {
+        l.destroy(), c(-1);
       };
-      socket.on("error", handleError);
-      socket.on("timeout", handleError);
-    });
-  });
-  ipcMain2.on("system:openUrl", (_event, url) => {
-    shell.openExternal(url);
-  });
-  ipcMain2.handle("system:version", () => {
-    return app.getVersion();
-  });
-  ipcMain2.handle("platform:list", () => {
-    return config.getPlatforms();
-  });
-  ipcMain2.handle(
+      l.on("error", d), l.on("timeout", d);
+    }) : (E.error(`无效的地址: ${s}`), -1);
+  }), n.on("system:openUrl", (i, s) => {
+    E.info(`打开外部链接: ${s}`), cn.openExternal(s);
+  }), n.handle("system:version", () => (E.info(`获取应用版本: ${H.getVersion()}`), H.getVersion())), E.initIpc(), n.handle("platform:list", () => oe.getPlatforms()), n.handle(
     "platform:add",
-    (_e, platform) => {
-      return config.addPlatform(platform);
-    }
-  );
-  ipcMain2.handle(
+    (i, s) => oe.addPlatform(s)
+  ), n.handle(
     "platform:update",
-    (_e, nanoid2, patch) => {
-      config.updatePlatform(nanoid2, patch);
+    (i, s, r) => {
+      oe.updatePlatform(s, r);
     }
-  );
-  ipcMain2.handle(
+  ), n.handle(
     "platform:enable",
-    (_e, nanoid2) => {
-      config.enablePlatform(nanoid2);
+    (i, s) => {
+      oe.enablePlatform(s);
     }
-  );
-  ipcMain2.handle(
+  ), n.handle(
     "platform:disable",
-    (_e, nanoid2) => {
-      config.disablePlatform(nanoid2);
+    (i, s) => {
+      oe.disablePlatform(s);
     }
-  );
-  ipcMain2.handle(
+  ), n.handle(
     "platform:remove",
-    (_e, nanoid2) => {
-      config.removePlatform(nanoid2);
+    (i, s) => {
+      oe.removePlatform(s);
     }
-  );
-  ipcMain2.handle(
+  ), n.handle(
     "mojang:getProfile",
-    async (_event, uuid) => {
-      return await getMojangProfile(uuid);
-    }
-  );
-  ipcMain2.handle(
+    async (i, s) => await Sn(s)
+  ), n.handle(
     "frp:natfrp.userInfo",
-    async (_event, token) => {
-      return await NatFrp.userInfo(token);
-    }
-  );
-  ipcMain2.handle(
+    async (i, s) => await G.userInfo(s)
+  ), n.handle(
     "frp:natfrp.getNodes",
-    async (_event, token) => {
-      return await NatFrp.nodes(token);
-    }
-  );
-  ipcMain2.handle(
+    async (i, s) => await G.nodes(s)
+  ), n.handle(
     "frp:natfrp.nodeStats",
-    async (_event, token) => {
-      return await NatFrp.nodeStats(token);
-    }
-  );
-  ipcMain2.handle(
+    async (i, s) => await G.nodeStats(s)
+  ), n.handle(
     "frp:natfrp.getMergedNodes",
-    async (_event, token) => {
-      return await NatFrp.getMergedNodes(token);
-    }
-  );
-  ipcMain2.handle(
+    async (i, s) => await G.getMergedNodes(s)
+  ), n.handle(
     "frp:natfrp.getTunnels",
-    async (_event, token) => {
-      return await NatFrp.tunnelInfo(token);
-    }
-  );
-  ipcMain2.handle(
+    async (i, s) => await G.tunnelInfo(s)
+  ), n.handle(
     "frp:natfrp.tunnelCreate",
-    async (_event, token, node, local_port) => {
-      return await NatFrp.tunnelCreate(token, node, local_port);
-    }
-  );
-  ipcMain2.handle(
+    async (i, s, r, o) => (E.info(`创建natfrp隧道: 节点${r}, 端口${o}`), await G.tunnelCreate(s, r, o))
+  ), n.handle(
     "frp:natfrp.tunnelEdit",
-    async (_event, token, tunnel_id, local_port) => {
-      return await NatFrp.tunnelEdit(token, tunnel_id, local_port);
-    }
-  );
-  ipcMain2.handle("frpc:start", (_, token, tunnelId) => {
-    frpc.startTunnel(token, tunnelId);
-    return true;
-  });
-  ipcMain2.handle("frpc:stop", (_, tunnelId) => {
-    frpc.stopTunnel(tunnelId);
-    return true;
-  });
-  ipcMain2.handle("sakurafrp:exists", () => {
-    return downloader.exists();
-  });
-  ipcMain2.handle("sakurafrp:download", async (event) => {
-    const data = await NatFrp.clients();
-    const info = getLatestWindowsSakuraFrp(data);
-    await downloader.download(
-      info.url,
-      info.hash,
-      (percent) => {
-        event.sender.send("sakurafrp:progress", percent);
+    async (i, s, r, o) => (E.info(`修改natfrp隧道: 隧道${r}, 端口${o}`), await G.tunnelEdit(s, r, o))
+  ), n.handle("frpc:start", (i, s, r) => (E.info(`启动SakuraFRPC隧道: ${r}`), e.startTunnel(s, r), !0)), n.handle("frpc:stop", (i, s) => (E.info(`停止SakuraFRPC隧道: ${s}`), e.stopTunnel(s), !0)), n.handle("sakurafrp:exists", () => {
+    const i = It.exists();
+    return E.info(`检查SakuraFRP是否存在: ${i}`), i;
+  }), n.handle("sakurafrp:download", async (i) => {
+    E.info("开始下载SakuraFRPC");
+    const s = await G.clients(), r = Kn(s);
+    return await It.download(
+      r.url,
+      r.hash,
+      (o) => {
+        i.sender.send("sakurafrp:progress", o);
       }
-    );
-    return {
-      version: info.version,
-      path: downloader.filePath
+    ), E.info("SakuraFRPC下载完成"), {
+      version: r.version,
+      path: It.filePath
     };
-  });
-  ipcMain2.handle("minecraft:detect", async () => {
-    return await MinecraftDetector.detectAll();
-  });
-  ipcMain2.handle(
+  }), n.handle("minecraft:detect", async () => await xe.detectAll()), n.handle(
     "minecraft:status",
-    async (_event, host, port, timeout2) => {
-      return await getMinecraftServerStatus(host, port, timeout2);
-    }
-  );
-  ipcMain2.on("window:minimize", () => {
-    win2 == null ? void 0 : win2.minimize();
-  });
-  ipcMain2.on("window:close", () => {
-    win2 == null ? void 0 : win2.close();
+    async (i, s, r, o) => await ki(s, r, o)
+  ), n.on("window:minimize", () => {
+    t == null || t.minimize();
+  }), n.on("window:close", () => {
+    t == null || t.close();
   });
 }
-const __dirname$1 = path$1.dirname(fileURLToPath(import.meta.url));
-process.env.APP_ROOT = path$1.join(__dirname$1, "..");
-const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
-const MAIN_DIST = path$1.join(process.env.APP_ROOT, "dist-electron");
-const RENDERER_DIST = path$1.join(process.env.APP_ROOT, "dist");
-process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path$1.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
-let win;
-function createWindow() {
-  win = new BrowserWindow({
+if (typeof Lt == "string")
+  throw new TypeError("Not running in an Electron environment!");
+const { env: tn } = process, Vi = "ELECTRON_IS_DEV" in tn, Ui = Number.parseInt(tn.ELECTRON_IS_DEV, 10) === 1, qi = Vi ? Ui : !Lt.app.isPackaged, rn = Y.dirname(ln(import.meta.url));
+process.env.APP_ROOT = Y.join(rn, "..");
+const Bt = process.env.VITE_DEV_SERVER_URL, ua = Y.join(process.env.APP_ROOT, "dist-electron"), nn = Y.join(process.env.APP_ROOT, "dist");
+process.env.VITE_PUBLIC = Bt ? Y.join(process.env.APP_ROOT, "public") : nn;
+let R;
+function on() {
+  R = new mr({
     width: 1200,
     height: 800,
     // 🔒 固定尺寸
-    resizable: false,
-    minimizable: true,
-    maximizable: false,
-    fullscreenable: false,
+    resizable: !1,
+    minimizable: !0,
+    maximizable: !1,
+    fullscreenable: !1,
     // 🚫 无边框
-    frame: false,
+    frame: !1,
     // 🧠 推荐开启
-    useContentSize: true,
-    icon: path$1.join(process.env.VITE_PUBLIC, "favicon.png"),
+    useContentSize: !0,
+    icon: Y.join(process.env.VITE_PUBLIC, "favicon.png"),
     title: "OneTunnel",
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: true,
-      preload: path$1.join(__dirname$1, "preload.mjs")
+      nodeIntegration: !0,
+      contextIsolation: !0,
+      preload: Y.join(rn, "preload.mjs")
     }
-  });
-  win.setMenu(null);
-  win.setMenuBarVisibility(false);
-  if (process.env.NODE_MODE) {
-    win.webContents.openDevTools();
-  }
-  win.on("maximize", () => {
-    win == null ? void 0 : win.unmaximize();
-  });
-  loadIcpMain(ipcMain, win);
-  win.webContents.openDevTools();
-  if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL);
-  } else {
-    win.loadFile(path$1.join(RENDERER_DIST, "index.html"));
-  }
+  }), E.info("应用正在启动..."), R.setMenu(null), R.setMenuBarVisibility(!1), R.on("maximize", () => {
+    R == null || R.unmaximize();
+  }), Mi(Ie, R), (process.env.NODE_ENV === "development" || qi) && R.webContents.openDevTools(), Bt ? R.loadURL(Bt) : R.loadFile(Y.join(nn, "index.html"));
 }
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-    win = null;
-  }
+H.on("window-all-closed", () => {
+  process.platform !== "darwin" && (H.quit(), R = null);
 });
-app.on("activate", async () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+H.on("activate", async () => {
+  mr.getAllWindows().length === 0 && on();
 });
-app.whenReady().then(createWindow);
+H.whenReady().then(on);
 export {
-  MAIN_DIST,
-  RENDERER_DIST,
-  VITE_DEV_SERVER_URL
+  ua as MAIN_DIST,
+  nn as RENDERER_DIST,
+  Bt as VITE_DEV_SERVER_URL
 };

@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import https from 'https'
 import crypto from 'crypto'
+import { loggerService } from './utils/logger'
 
 /* =======================
    类型定义
@@ -92,6 +93,7 @@ export class SakuraFrpDownloader {
 
             https.get(url, res => {
                 if (res.statusCode !== 200) {
+                    loggerService.error('下载失败', res.statusCode)
                     reject(new Error(`下载失败，HTTP ${res.statusCode}`))
                     return
                 }
@@ -117,6 +119,7 @@ export class SakuraFrpDownloader {
                         const fileHash = md5.digest('hex')
                         if (fileHash !== expectedHash) {
                             fs.unlinkSync(tempPath)
+                            loggerService.error('sakurafrp.exe 校验失败', fileHash)
                             reject(new Error('sakurafrp.exe 校验失败'))
                             return
                         }

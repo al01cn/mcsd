@@ -6,10 +6,13 @@ import { nanoid } from 'nanoid';
 import { onMounted, ref } from 'vue';
 import { toast } from 'vue-sonner';
 import { Dialog } from '../lib/useDialog';
+import { logger } from '../lib/logger';
 
 interface PlatformConfigWithUser extends PlatformConfig {
     userInfo?: NatFrpUserInfo | null; // 可以根据接口具体类型改
 }
+
+const console = logger
 
 const version = ref('')
 
@@ -51,7 +54,7 @@ const addPlatform = async () => {
         isModalOpen.value = !isModalOpen.value
         await refreshPlatforms()
     } catch (e) {
-        console.log(e)
+        console.log('[Config]：添加平台失败', e)
         toast.error("添加失败")
     }
 
@@ -91,7 +94,7 @@ const getPlatforms = async () => {
         // console.log(platformsList);
 
     } catch (e) {
-        console.log(e)
+        console.log('[Config]：获取平台信息失败', e)
     }
 }
 
@@ -106,7 +109,7 @@ const delPlatform = async (nanoid: string) => {
                 toast.success("删除成功")
                 await refreshPlatforms()
             } catch (e) {
-                console.log(e)
+                console.log('[Config]：删除平台失败', e)
                 toast.error("删除失败")
             }
         }
@@ -119,7 +122,7 @@ const togglePlatform = async (nanoid: string, sw: boolean) => {
         await (window as any).platformAPI.update(nanoid, { enabled: sw })
         await refreshPlatforms()
     } catch (e) {
-        console.log(e)
+        console.log('[Config]：切换平台状态失败',e)
         toast.error("操作失败")
     }
 }
@@ -178,7 +181,7 @@ onMounted(async () => {
                             <div class="flex flex-col">
                                 <h4 class="font-black text-slate-800 text-base leading-tight gap-4">
                                     <span>{{ i.userInfo?.name ? i.userInfo?.name : i.platform.toLocaleUpperCase()
-                                        }}</span>
+                                    }}</span>
                                 </h4>
                                 <p class="text-[10px] text-slate-400 font-bold flex items-center gap-1.5 mt-1 uppercase
                                     tracking-tight">
@@ -213,7 +216,7 @@ onMounted(async () => {
                             <div v-if="i.userInfo?.sign.traffic" class="flex flex-col">
                                 <span class="text-[9px] text-slate-400 font-black uppercase tracking-widest">可用流量</span>
                                 <span class="text-sm font-black text-slate-700">{{ i.userInfo?.sign.traffic + ' Gib'
-                                }}</span>
+                                    }}</span>
                             </div>
                         </div>
                         <div class="flex items-center gap-1.5 text-primary font-black text-sm">

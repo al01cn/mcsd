@@ -10,6 +10,7 @@ import { MCProxyConfig } from '../lib/config';
 import { extractHostAndPort, MCProxyName } from '../lib';
 import { useCopy } from '../lib/useCopy';
 import { Dialog } from '../lib/useDialog';
+import { logger } from '../lib/logger'
 
 interface MCInfo extends JavaStatusResponse {
     players: {
@@ -33,11 +34,12 @@ interface RunConfig {
     node_id?: number;
 }
 
+const console = logger
+
 const router = useRouter()
 
 
 const isClient = ref(false)
-const isRun = ref(false)
 const isDestoryed = ref(false);
 const status = ref<MCInfo | null>(null);
 const playerHeadCache = new Map<string, string>();
@@ -105,9 +107,9 @@ const startServer = (host: string = '127.0.0.1', port: number = 25565) => {
     McConfig.value = runConfig
 
     // 强制检查 ID
-    console.log("🚀 发送到主进程的 ID:", PROXY_ID);
+    console.log('[Console] 代理实例ID:', PROXY_ID);
 
-    console.log("正在尝试启动代理:", runConfig);
+    console.log('[Console]：正在启动代理', runConfig);
     (window as any).mcproxy.start(runConfig);
 }
 
@@ -142,13 +144,13 @@ function startTunnel() {
         config.value = JSON.parse(atob(token.value)) as RunConfig
         if (config.value?.tunnel_token && config.value?.tunnel_id) {
             isClient.value = false
-            console.log("房主模式");
+            console.log('[Console]：房主模式');
             startStatus()
             return
         }
 
         isClient.value = true
-        console.log("客机模式");
+        console.log('[Console]：客机模式');
         startStatus()
         return
     }
@@ -213,15 +215,15 @@ async function refreshStatus(host: string = "127.0.0.1", port: number = 25565) {
 
         try {
             // 第一步：尝试使用传入的地址（可能是远程域名）
-            console.log(`🔍 尝试连接主地址: ${host}:${port}`);
+            console.log('[Console] 尝试连接主地址:', `${host}:${port}`);
             newStatus = await attemptFetch(host, port);
         } catch (remoteErr) {
-            if(!isClient.value) throw remoteErr; // 如果不是房主模式，则直接抛出给外层处理
+            if (isClient.value) throw remoteErr; // 如果不是房主模式，则直接抛出给外层处理
             // 第二步：回退逻辑
             // 如果传入的不是本地地址，且远程连接失败，尝试本地连接
             if (host !== "127.0.0.1" && host !== "localhost") {
                 const localPort = config.value?.port || port;
-                console.warn(`⚠️ 远程连接失败，正在尝试回退至本地连接 (127.0.0.1:${localPort})...`);
+                console.warn(`[Console]：⚠️ 远程连接失败，正在尝试回退至本地连接 (127.0.0.1:${localPort})...`);
                 newStatus = await attemptFetch("127.0.0.1", localPort);
             } else {
                 throw remoteErr; // 如果本来就是本地还失败，直接抛出给外层 Reconnect 处理
@@ -249,8 +251,8 @@ async function refreshStatus(host: string = "127.0.0.1", port: number = 25565) {
             });
 
             const { joined, left } = detectPlayerChanges(realPlayers);
-            joined.forEach(p => console.log("玩家进入:", p.name));
-            left.forEach(p => console.log("玩家离开:", p.name));
+            joined.forEach(p => console.log("[Console]：玩家进入:", p.name));
+            left.forEach(p => console.log("[Console]：玩家离开:", p.name));
 
             newStatus.players.sample = realPlayers;
         }
@@ -259,7 +261,6 @@ async function refreshStatus(host: string = "127.0.0.1", port: number = 25565) {
             status.value = newStatus;
         }
 
-        isRun.value = true;
         serverState.value = "running";
         isReconnecting.value = false;
         isRuning.value = TunnelStatus.Running;
@@ -267,19 +268,17 @@ async function refreshStatus(host: string = "127.0.0.1", port: number = 25565) {
         retryCount.value = 0;
 
     } catch (err) {
-        console.warn("❌ 所有连接途径均已失败:", err);
+        console.warn("[Console]：所有连接途径均已失败:", err);
         if (isDestoryed.value) return;
-        if (!isRun.value) return;
         ReconnectServer(); // 触发你原本定义的重连（包含 MAX_RETRY 逻辑）
     }
 }
 
 const ReconnectServer = () => {
     if (isDestoryed.value) return; // 如果已经销毁，直接跳过
-    if (!isRun.value) return; // 如果首次运行失败，则不重试
     // 1. 检查是否已经超过最大重试次数
     if (retryCount.value >= MAX_RETRY.value) {
-        console.error("❌ 已达到最大重试次数，准备关闭服务...");
+        console.error("[Console]：已达到最大重试次数，准备关闭服务...");
         isDestoryed.value = true; // 开启物理锁
         IsError.value = true;
 
@@ -297,7 +296,7 @@ const ReconnectServer = () => {
     isReconnecting.value = true;
     retryCount.value++; // 增加重试计数
 
-    console.log(`🔄 正在尝试第 ${retryCount.value}/${MAX_RETRY.value} 次重试...`);
+    console.log(`[Console]：正在尝试第 ${retryCount.value}/${MAX_RETRY.value} 次重试...`);
 
     // 使用一次性延时，避免定时器冲突
     setTimeout(async () => {
@@ -359,10 +358,11 @@ const closeServer = () => {
     // ...
 
     setTimeout(() => {
+        isDestoryed.value = false;
         toRooms()
     }, 3000)
 
-    console.log("服务已成功关闭并重置数据");
+    console.log("[Console]：服务已成功关闭并重置数据");
 };
 
 const toRooms = () => {
@@ -393,28 +393,26 @@ const { copyToClipboard } = useCopy();
 onMounted(() => {
     // 先挂载监听器，再启动服务
     unbindStatus = (window as any).mcproxy.onStatus((data: any) => {
-        console.log("📥 收到主进程反馈:", data);
+        console.log("[Console]：收到主进程反馈:", data);
 
         if (data.id !== PROXY_ID) {
-            console.warn(`ID 匹配失败! 收到:${data.id}, 当前预期:${PROXY_ID}`);
+            console.warn(`[Console]：ID 匹配失败! 收到:${data.id}, 当前预期:${PROXY_ID}`);
             return;
         }
 
         if (data.success) {
-            console.log("✅ 服务器启动成功");
+            console.log("[Console]：服务器启动成功");
             // isRuning.value = TunnelStatus.Running; // 在这里切换状态！
             if (data.localPort) {
                 MclocalPort.value = data.localPort
             }
 
-            if (isRun.value) {
-                setTimeout(() => {
-                    isRuning.value = TunnelStatus.Running
-                    SessionCache.set('isRuning', true)
-                }, 3000)
-            }
+            setTimeout(() => {
+                isRuning.value = TunnelStatus.Running
+                SessionCache.set('isRuning', true)
+            }, 3000)
         } else {
-            console.error("❌ 启动失败:", data.message);
+            console.error("[Console]：启动失败:", data.message);
             // 这里可以弹窗提示用户端口被占用
         }
     });
@@ -423,13 +421,12 @@ onMounted(() => {
     unbindLogs = (window as any).sakurafrp.onLog((data: any) => {
         const line = data.message;
         // 1. 打印原始日志方便排查
-        console.log("收到日志:", line);
+        console.log("[Console]：收到日志:", line);
 
         // 2. 尝试提取
         const result = extractHostAndPort(data.message);
 
         if (result) {
-            isRun.value = true
             McProxyHostAndPort.value = {
                 host: result.host,
                 port: Number(result.port),
@@ -456,23 +453,10 @@ onMounted(() => {
     startTunnel()
 })
 onUnmounted(() => {
-    if (timer) clearInterval(timer);
-    if (unbindStatus) unbindStatus();
-    if (unbindLogs) unbindLogs();
-
     // 如果当前还在运行或加载中，执行关闭逻辑
     if (isRuning.value !== TunnelStatus.Stopped) {
         // 直接调用停止代理的核心逻辑，不触发 UI 跳转
-        stopServer();
-        if (timer) clearInterval(timer);
-        if (unbindStatus) unbindStatus();
-        if (unbindLogs) unbindLogs();
-
-        // 如果是房主，组件销毁时是否关闭隧道取决于你的业务需求
-        // 通常建议房主离开也关闭隧道
-        if (!isClient.value) {
-            stopFrp();
-        }
+        closeServer();
     }
 });
 </script>

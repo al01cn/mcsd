@@ -17,19 +17,20 @@ proxyManager.init();
 export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWindow) {
     const frpc = new SakuraFrpcManager(win)
 
-    // main.ts
+    // TCP延迟测试
     ipcMain.handle("network:tcp", async (_event, host, port) => {
+        loggerService.info(`开始测试TCP连接: ${host}:${port}`);
         // 1. 强制转换并检查
         const targetPort = parseInt(String(port), 10);
         const targetHost = String(host || '').trim();
 
         // 2. 校验合法性
         if (isNaN(targetPort) || targetPort <= 0 || targetPort > 65535) {
-            console.error(`无效的端口: ${port}`);
+            loggerService.error(`无效的端口: ${port}`);
             return -1;
         }
         if (!targetHost) {
-            console.error(`无效的地址: ${host}`);
+            loggerService.error(`无效的地址: ${host}`);
             return -1;
         }
 
@@ -57,16 +58,17 @@ export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWind
 
     // 打开链接
     ipcMain.on('system:openUrl', (_event, url) => {
+        loggerService.info(`打开外部链接: ${url}`);
         shell.openExternal(url);
     });
 
     // 获取版本信息
     ipcMain.handle('system:version', () => {
+        loggerService.info(`获取应用版本: ${app.getVersion()}`);
         return app.getVersion() // 返回 package.json 中的 version 字段
     })
 
-    // 日志
-
+    // 日志初始化
     loggerService.initIpc()
 
     // 配置
@@ -154,6 +156,7 @@ export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWind
     ipcMain.handle(
         'frp:natfrp.tunnelCreate',
         async (_event, token: string, node: number, local_port: number) => {
+            loggerService.info(`创建natfrp隧道: 节点${node}, 端口${local_port}`);
             return await NatFrp.tunnelCreate(token, node, local_port)
         }
     )
@@ -161,28 +164,33 @@ export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWind
     ipcMain.handle(
         'frp:natfrp.tunnelEdit',
         async (_event, token: string, tunnel_id: string, local_port: number) => {
+            loggerService.info(`修改natfrp隧道: 隧道${tunnel_id}, 端口${local_port}`);
             return await NatFrp.tunnelEdit(token, tunnel_id, local_port)
         }
     )
 
     // SakuraFrp管理器
-
     ipcMain.handle('frpc:start', (_, token: string, tunnelId: string) => {
+        loggerService.info(`启动SakuraFRPC隧道: ${tunnelId}`);
         frpc.startTunnel(token, tunnelId)
         return true
-    })
-
-    ipcMain.handle('frpc:stop', (_, tunnelId: string) => {
+      })
+    
+      ipcMain.handle('frpc:stop', (_, tunnelId: string) => {
+        loggerService.info(`停止SakuraFRPC隧道: ${tunnelId}`);
         frpc.stopTunnel(tunnelId)
         return true
-    })
+      })
 
     /** 前端判断是否存在 */
     ipcMain.handle('sakurafrp:exists', () => {
-        return downloader.exists()
+        const exists = downloader.exists();
+        loggerService.info(`检查SakuraFRP是否存在: ${exists}`);
+        return exists;
     })
 
     ipcMain.handle('sakurafrp:download', async (event) => {
+        loggerService.info(`开始下载SakuraFRPC`);
         const data = await NatFrp.clients()
         const info = getLatestWindowsSakuraFrp(data)
 
@@ -194,6 +202,7 @@ export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWind
             }
         )
 
+        loggerService.info(`SakuraFRPC下载完成`);
         return {
             version: info.version,
             path: downloader.filePath
@@ -205,10 +214,9 @@ export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWind
         return await MinecraftDetector.detectAll();
     });
 
-    // MC 服务器状态
     ipcMain.handle(
         "minecraft:status",
-        async (_event, host: string, port: number, timeout?: number) => {
+        async (_event, host, port, timeout) => {
             return await getMinecraftServerStatus(host, port, timeout);
         }
     );

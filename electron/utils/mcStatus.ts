@@ -1,5 +1,6 @@
 // src/utils/minecraft.ts
 import { status, JavaStatusResponse } from "minecraft-server-util";
+import { loggerService } from "./logger";
 
 /**
  * 获取 Minecraft 服务器状态信息
@@ -24,7 +25,7 @@ export async function getMinecraftServerStatus(
     const result = await status(host, port, { timeout });
     return result;
   } catch (error) {
-    console.error(`获取 Minecraft 服务器状态失败: ${error}`);
+    loggerService.error("获取 Minecraft 状态失败", error);
     throw error;
   }
 }

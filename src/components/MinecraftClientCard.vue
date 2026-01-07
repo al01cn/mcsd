@@ -2,7 +2,6 @@
 import { Activity, AlertCircle, Loader2 } from "lucide-vue-next"
 import { Icon } from "@iconify/vue";
 import { McLoginType, McModLoader } from "../lib/mcDetect";
-import { v } from "vue-router/dist/router-CWoNjPRp.mjs";
 
 const props = defineProps({
     loader: { type: String, default: "" },

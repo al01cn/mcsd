@@ -7,7 +7,10 @@ import { SakuraFrpNode } from '../lib/config';
 import { toast } from 'vue-sonner'
 import { useRouter } from 'vue-router';
 import SessionCache from '../lib/cache';
+import { logger } from '../lib/logger';
 
+
+const console = logger
 const router = useRouter()
 
 const loadingPid = ref<number | null>(null);
@@ -134,7 +137,7 @@ const refreshClients = async (showLoading = false) => {
         clients.value.sort((a, b) => a.pid - b.pid);
 
     } catch (e) {
-        console.error("检测失败:", e);
+        console.error('[CreateRooms]：检测Minecraft实例错误', e);
     } finally {
         isRefreshing.value = false;
     }
@@ -166,10 +169,11 @@ const getMergedNodes = async (token: string) => {
     try {
         const nodesList = await (window as any).frp.natfrp_getMergedNodes(token)
         nodes.value = nodesList
-        console.log(nodesList);
+        // console.log(nodesList);
+        console.info('[CreateRooms]：获取节点列表成功', nodesList.length)
 
     } catch (e) {
-        console.log(e)
+        console.error('[CreateRooms]：获取节点列表失败', e)
     }
 }
 
@@ -177,13 +181,13 @@ const getTunnelInfo = async (token: string) => {
     try {
         const tunnelInfo = await (window as any).frp.natfrp_tunnelInfo(token)
         tunnels.value = tunnelInfo
-        if(tunnelInfo.length > 0 ){
+        if (tunnelInfo.length > 0) {
             isTunnel.value = tunnelInfo[0].id
         }
         // console.log(tunnelInfo);
 
     } catch (e) {
-        console.log(e)
+        console.error('[CreateRooms]：获取隧道列表失败', e)
     }
 }
 
@@ -194,7 +198,7 @@ const editTunnel = async (token: string, tunnelId: string) => {
         console.log(tunnelInfo)
         return tunnelInfo
     } catch (e) {
-        console.log(e)
+        console.error('[CreateRooms]：编辑隧道信息失败', e)
     }
 }
 
@@ -203,12 +207,12 @@ const createTunnel = async (token: string, nodeId: number) => {
         const tunPort = mcPort.value
         const tunnelInfo = await (window as any).frp.natfrp_tunnelCreate(token, nodeId, tunPort)
         console.log(tunnelInfo);
-        
+
         if (tunnelInfo.code) {
             createTunnelMessage.value = tunnelInfo.msg
             createTunnelType.value = 3
 
-            setTimeout(()=>{
+            setTimeout(() => {
                 isCreateTunnels.value = false
                 createTunnelType.value = 1
             }, 3000)
@@ -219,7 +223,7 @@ const createTunnel = async (token: string, nodeId: number) => {
         }
         return tunnelInfo
     } catch (e) {
-        console.log(e)
+        console.error('[CreateRooms]：创建节点失败', e)
     }
 }
 
@@ -232,7 +236,7 @@ const getPlatforms = async () => {
         )
         network.value = available ? available.secret : ''
     } catch (e) {
-        console.log(e)
+        console.error('[CreateRooms]：获取平台列表失败', e)
     }
 }
 
@@ -245,7 +249,7 @@ watch(network, async (newSecret) => {
     if (newSecret) {
         // 重置当前选择的隧道和节点，防止跨平台数据冲突
         isTunnel.value = "";
-        
+
         // 重新获取该平台下的数据
         await getTunnelInfo(newSecret);
     } else {
@@ -335,9 +339,9 @@ const handleCardClick = (client: any) => {
                             <select v-model="isTunnel"
                                 class="w-64 select bg-slate-50 border border-slate-100 rounded-2xl px-5 text-sm font-bold text-slate-700 focus:bg-white focus:border-primary focus:outline-none cursor-pointer">
                                 <option :value="null" disabled>没有获取到隧道的话，将自动创建</option>
-                                <option v-for="p in tunnels" :value="(p as any).id" :disabled="(p as any).online">{{ ((p as any).name) + `(${((p as
-                                    any).id as
-                                    string)})-${(p as any).online ? '在线':'空闲'}` }}
+                                <option v-for="p in tunnels" :value="(p as any).id" :disabled="(p as any).online">
+                                    {{ ((p as any).name) + `(${((p as any).id as string)})-${(p as any).online ? '在线' :
+                                    '空闲'}` }}
                                 </option>
                             </select>
                         </div>
@@ -410,8 +414,9 @@ const handleCardClick = (client: any) => {
                             创建成功，即将前往控制台...</h2>
                         <h2 v-if="createTunnelType == 3" class="text-2xl font-black text-slate-800 tracking-tight">
                             创建失败，即将返回...</h2>
-                        <label v-if="createTunnelMessage && createTunnelType == 3" class="label text-sm mt-2">{{ createTunnelMessage
-                            }}</label>
+                        <label v-if="createTunnelMessage && createTunnelType == 3" class="label text-sm mt-2">{{
+                            createTunnelMessage
+                        }}</label>
                     </div>
                 </div>
 
