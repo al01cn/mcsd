@@ -31,7 +31,10 @@ contextBridge.exposeInMainWorld('windowControl', {
 
 contextBridge.exposeInMainWorld('system', {
   openBrowser: (url: string) => ipcRenderer.send('system:openUrl', url),
-  getVersion: () => ipcRenderer.invoke("system:version")
+  getVersion: () => ipcRenderer.invoke("system:version"),
+  log: (level: 'info' | 'warn' | 'error' | 'debug', message: string, data?: any) => {
+    ipcRenderer.send('system:log', { level, message, data });
+  }
 });
 
 contextBridge.exposeInMainWorld('mojang', {

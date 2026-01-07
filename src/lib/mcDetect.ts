@@ -24,6 +24,7 @@ export interface MinecraftProcessInfo {
     username?: string;
     uuid?: string;
     loginType?: LoginType;
+    versionType?: string;
     provider?: string;
     lanPorts: number[];
     isLan: boolean;

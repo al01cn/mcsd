@@ -8,6 +8,7 @@ import { getMinecraftServerStatus } from "./utils/mcStatus";
 import { proxyManager } from "./minecraft-lan-proxy";
 import net from 'net';
 import { app, shell } from "electron";
+import { loggerService } from "./utils/logger";
 const config = new Config();
 const downloader = new SakuraFrpDownloader()
 proxyManager.init();
@@ -63,6 +64,10 @@ export function loadIcpMain(ipcMain: Electron.IpcMain, win: Electron.BrowserWind
     ipcMain.handle('system:version', () => {
         return app.getVersion() // 返回 package.json 中的 version 字段
     })
+
+    // 日志
+
+    loggerService.initIpc()
 
     // 配置
     ipcMain.handle("platform:list", (): PlatformConfig[] => {

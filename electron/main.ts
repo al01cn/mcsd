@@ -3,7 +3,8 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { loadIcpMain } from './ipcMain'
-import isDev from 'electron-is-dev'
+import { loggerService } from './utils/logger'
+// import isDev from 'electron-is-dev'
 
 // const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -54,6 +55,8 @@ function createWindow() {
     },
   })
 
+  loggerService.info('应用正在启动...')
+
   win.setMenu(null)
   win.setMenuBarVisibility(false)
 
@@ -73,9 +76,11 @@ function createWindow() {
   // })
 
   // 在启动脚本中，你通常会设置 NODE_ENV=development
-  if (process.env.NODE_ENV === 'development' || isDev) {
-    win.webContents.openDevTools();
-  }
+  // if (process.env.NODE_ENV === 'development' || isDev) {
+  //   win.webContents.openDevTools();
+  // }
+
+  win.webContents.openDevTools();
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)

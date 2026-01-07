@@ -2,6 +2,7 @@
 import { Activity, AlertCircle, Loader2 } from "lucide-vue-next"
 import { Icon } from "@iconify/vue";
 import { McLoginType, McModLoader } from "../lib/mcDetect";
+import { v } from "vue-router/dist/router-CWoNjPRp.mjs";
 
 const props = defineProps({
     loader: { type: String, default: "" },
@@ -11,6 +12,7 @@ const props = defineProps({
     loginType: { type: String, default: "" },
     provider: { type: String, default: "" },
     version: { type: String, default: "" },
+    versionType: { type: String, default: "" },
     lanPorts: { type: Array, default: () => [] },
     isLan: { type: Boolean, default: false },
     selected: { type: Boolean, default: false },
@@ -68,6 +70,7 @@ function parseVersion(fullVersion: string): string | undefined {
                             {{ isLan ? lanPorts[0] || '-' : "未开启局域网" }}
                         </span>
                         <span v-if="loaderVersion">{{ loaderVersion }}</span>
+                        <span v-if="versionType">{{ versionType }} </span>
                         <span v-if="username">{{ username }}</span>
                         <span v-if="uuid">{{ uuid }}</span>
                     </p>
@@ -87,10 +90,10 @@ function parseVersion(fullVersion: string): string | undefined {
                                 离线登录
                             </p>
                             <p v-else-if="loginType == McLoginType.Msa"
-                                class="text-sm font-black text-primary leading-none">
+                                class="text-lg font-black text-primary leading-none">
                                 微软登录</p>
                             <p v-else-if="loginType == McLoginType.Custom"
-                                class="text-sm font-black text-primary leading-none">
+                                class="text-lg font-black text-primary leading-none">
                                 {{ provider != null ? provider.toLocaleUpperCase() : '第三方' }}
                             </p>
                             <p v-else class="text-sm font-black text-slate-400 leading-none">未知的登录</p>

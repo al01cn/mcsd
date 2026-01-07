@@ -21,6 +21,7 @@ export interface LoginInfo {
     uuid?: string;
     loginType?: LoginType;
     provider?: string; // 新增：记录第三方登录的服务商域名
+    versionType?: string;
 }
 
 export interface MinecraftProcessInfo {
@@ -32,6 +33,7 @@ export interface MinecraftProcessInfo {
     username?: string;
     uuid?: string;
     loginType?: LoginType;
+    versionType?: string;
     provider?: string;
     lanPorts: number[];
     isLan: boolean;
@@ -126,9 +128,10 @@ export class MinecraftDetector {
     }
 
     static parseLoginInfo(cmd: string): LoginInfo {
-        const username = cmd.match(/--username\s+([^\s]+)/)?.[1];
-        const uuid = cmd.match(/--uuid\s+([^\s]+)/)?.[1];
-        const accessToken = cmd.match(/--accessToken\s+([^\s]+)/)?.[1];
+        const username = this.getArgValue(cmd, '--username')
+        const uuid = this.getArgValue(cmd, '--uuid')
+        const accessToken = this.getArgValue(cmd, '--accessToken')
+        const versionType = this.getArgValue(cmd, '--versionType')
 
         let loginType: LoginType = "offline";
         let provider: string | undefined = undefined;
@@ -137,21 +140,17 @@ export class MinecraftDetector {
         // 匹配格式: authlib-injector-x.x.x.jar=https://domain.com/api/yggdrasil/
         const injectorMatch = cmd.match(/authlib-injector[^\s=]*=([^"\s]+)/);
 
-        if (injectorMatch) {
-            loginType = "custom";
-            try {
-                const url = new URL(injectorMatch[1]);
-                provider = url.hostname; // 提取如: littleskin.cn
-            } catch {
-                provider = injectorMatch[1]; // fallback
-            }
-        }
-        // 2. 如果没有第三方注入，则根据 accessToken 判断
-        else if (accessToken && accessToken !== "0") {
-            // 微软登录的 Token 通常是 JWT 格式（三个段），或者是很长的 Base64
-            // 这里沿用你的逻辑并增强
-            if (accessToken.split('.').length === 3 && cmd.includes("--userType msa") && !injectorMatch) {
+        if (accessToken) {
+            if (this.isMojangToken(accessToken)) {
                 loginType = "msa";
+            } else if (injectorMatch) {
+                loginType = "custom";
+                try {
+                    const url = new URL(injectorMatch[1]);
+                    provider = url.hostname; // 提取如: littleskin.cn
+                } catch {
+                    provider = injectorMatch[1]; // fallback
+                }
             } else {
                 loginType = "offline";
             }
@@ -159,12 +158,68 @@ export class MinecraftDetector {
             loginType = "other";
         }
 
-        return { username, uuid, loginType, provider };
+        return { username, uuid, loginType, provider, versionType };
     }
 
     static parseVersion(cmd: string): string | undefined {
         return cmd.match(/--version\s+([\d\.\-\w]+)/)?.[1] || cmd.match(/--assetIndex\s+([^\s]+)/)?.[1];
     }
+
+    /**
+* 提取参数值并移除首尾引号
+* @param cmd 完整的命令行字符串
+* @param argName 参数名称，如 '--versionType'
+*/
+    private static getArgValue(cmd: string, argName: string): string | undefined {
+        // 1. 动态构造正则
+        // (\S+) 匹配参数名后的第一个非空字符开始的内容
+        // (.*?) 非贪婪匹配，直到遇到 " --" 或字符串结尾 ($)
+        const regex = new RegExp(`${argName}\\s+(.*?)(?=\\s+--|$)`);
+        const match = cmd.match(regex);
+
+        if (!match) return undefined;
+
+        let value = match[1].trim();
+
+        // 2. 移除首尾引号的精准处理
+        // ^["'] 匹配开头的单引号或双引号
+        // |["']$ 匹配结尾的单引号或双引号
+        // g 全局标志配合 replace
+        return value.replace(/^["']|["']$/g, '');
+    }
+
+    /**
+     * 判断是否为 Minecraft 官方 (Mojang/Microsoft) 的 JWT Token
+     */
+    static isMojangToken = (token: string): boolean => {
+        try {
+            const parts = token.split('.');
+            if (parts.length !== 3) return false;
+
+            // 解码 Payload (中间段)
+            // 浏览器环境用 atob，Node.js 环境用 Buffer
+            const payloadJson = typeof window !== 'undefined'
+                ? atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))
+                : Buffer.from(parts[1], 'base64').toString();
+
+            const payload = JSON.parse(payloadJson);
+
+            // 特征检测：
+            // 1. 必须有 xuid (Xbox User ID)
+            // 2. 必须有 pfd 数组 (Profile Details) 且包含用户角色名
+            // 3. iss 通常固定为 'authentication'
+            const hasXuid = typeof payload.xuid === 'string';
+            const hasPfd = Array.isArray(payload.pfd) && payload.pfd.length > 0;
+            const isAuthIss = payload.iss === 'authentication';
+            const hasPlatform = 'platform' in payload;
+
+            return hasXuid && hasPfd && (isAuthIss || hasPlatform);
+        } catch (e) {
+            // 解码失败或 JSON 解析失败说明不是合法的或不是标准的 Mojang Token
+            return false;
+        }
+    };
+
 
     /**
      * 核心处理逻辑：去重与特征识别
@@ -213,6 +268,7 @@ export class MinecraftDetector {
                 pid: proc.ProcessId,
                 java: proc.Name,
                 version,
+                versionType: login.versionType,
                 loader: loader.loader,
                 loaderVersion: loader.loaderVersion?.replace(/[\s._-]+$/, ''),
                 username: login.username,
@@ -309,5 +365,6 @@ export class MinecraftDetector {
         return this.processRawResults(procList, tcpList);
     }
 }
+
 
 export default MinecraftDetector;
