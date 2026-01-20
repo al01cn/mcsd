@@ -24,13 +24,12 @@ import Image from "next/image";
 import { pinyin } from "pinyin-pro";
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import ffmpeg from "../lib/ffmpeg";
+import vanillaSoundsJson from "../public/java/sounds.json";
 
 type PackPlatform = "java" | "bedrock";
 
@@ -57,6 +56,18 @@ type PackMeta = {
 };
 
 const DEFAULT_KEY = "mcsd";
+
+type VanillaEventOption = {
+  key: string;
+  category: string;
+};
+
+const VANILLA_EVENT_OPTIONS: VanillaEventOption[] = Object.keys(
+  vanillaSoundsJson as Record<string, unknown>
+)
+  .filter(Boolean)
+  .map((key) => ({ key, category: key.split(".")[0] ?? "其他" }))
+  .sort((a, b) => a.key.localeCompare(b.key));
 
 function clampText(value: string, maxLength: number) {
   return value.length > maxLength ? value.slice(0, maxLength) : value;
@@ -131,6 +142,44 @@ function loadHtmlImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
+async function resizePngToSquare(file: File, size: number): Promise<File> {
+  if (file.type !== "image/png") {
+    throw new Error("only png supported");
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas ctx init failed");
+
+  if ("createImageBitmap" in window) {
+    const bitmap = await createImageBitmap(file);
+    try {
+      ctx.drawImage(bitmap, 0, 0, size, size);
+    } finally {
+      bitmap.close();
+    }
+  } else {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await loadHtmlImage(url);
+      ctx.drawImage(img, 0, 0, size, size);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((b) => {
+      if (!b) reject(new Error("canvas toBlob failed"));
+      else resolve(b);
+    }, "image/png");
+  });
+
+  return new File([blob], file.name, { type: "image/png", lastModified: Date.now() });
+}
+
 async function getImageNaturalSize(file: File): Promise<{ width: number; height: number }> {
   const url = URL.createObjectURL(file);
   try {
@@ -139,39 +188,6 @@ async function getImageNaturalSize(file: File): Promise<{ width: number; height:
   } finally {
     URL.revokeObjectURL(url);
   }
-}
-
-function clampNumber(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function getIconCropBaseScale(img: HTMLImageElement | null, size: number) {
-  if (!img) return 1;
-  return Math.max(size / img.naturalWidth, size / img.naturalHeight);
-}
-
-function clampIconCropOffset(
-  next: { x: number; y: number },
-  img: HTMLImageElement | null,
-  size: number,
-  zoom: number
-) {
-  if (!img) return next;
-  const base = getIconCropBaseScale(img, size);
-  const scale = base * zoom;
-  const imageHalfW = (img.naturalWidth * scale) / 2;
-  const imageHalfH = (img.naturalHeight * scale) / 2;
-  const boxHalf = size / 2;
-
-  const minX = boxHalf - imageHalfW;
-  const maxX = imageHalfW - boxHalf;
-  const minY = boxHalf - imageHalfH;
-  const maxY = imageHalfH - boxHalf;
-
-  return {
-    x: clampNumber(next.x, minX, maxX),
-    y: clampNumber(next.y, minY, maxY),
-  };
 }
 
 function uuid() {
@@ -316,7 +332,7 @@ function FfmpegInlineStatus({
       <span className={["h-2 w-2 shrink-0 rounded-full", view.dot].join(" ")} />
       <span className="shrink-0">FFmpeg</span>
       <span className="text-slate-400">·</span>
-      <span className="break-words text-right">{view.label}</span>
+      <span className="wrap-break-word text-right">{view.label}</span>
       {view.showSpinner ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : null}
     </div>
   );
@@ -446,6 +462,21 @@ function IconPreview({
   return (
     <div className="flex justify-center">
       <div className="group relative">
+        {iconPreviewUrl ? (
+          <button
+            type="button"
+            aria-label="删除封面"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (inputRef.current) inputRef.current.value = "";
+              void onPick(null);
+            }}
+            className="absolute right-2 top-2 z-20 inline-flex items-center justify-center rounded-full bg-white/90 p-2 text-slate-500 shadow-md ring-1 ring-slate-200 transition hover:bg-white hover:text-red-500"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -488,342 +519,19 @@ function IconPreview({
   );
 }
 
-function IconCropModal({
-  file,
-  onCancel,
-  onConfirm,
-}: {
-  file: File;
-  onCancel: () => void;
-  onConfirm: (file: File) => void;
-}) {
-  const dialogRef = useRef<HTMLDivElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const imageUrl = useMemo(() => URL.createObjectURL(file), [file]);
-  const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [boxSize, setBoxSize] = useState<number>(256);
-  const [zoom, setZoom] = useState<number>(1);
-  const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [outputSize, setOutputSize] = useState<number>(256);
-  const imageRef = useRef<HTMLImageElement | null>(null);
-  const zoomRef = useRef<number>(zoom);
-  const dragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    startOffsetX: number;
-    startOffsetY: number;
-  } | null>(null);
-
-  useEffect(() => {
-    dialogRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const img = await loadHtmlImage(imageUrl);
-        if (cancelled) return;
-        setImage(img);
-        setStatus("ready");
-      } catch {
-        if (cancelled) return;
-        setStatus("error");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [imageUrl]);
-
-  useEffect(() => {
-    return () => {
-      URL.revokeObjectURL(imageUrl);
-    };
-  }, [imageUrl]);
-
-  useEffect(() => {
-    imageRef.current = image;
-  }, [image]);
-
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const apply = () => {
-      const next = Math.round(el.getBoundingClientRect().width);
-      if (next <= 0) return;
-      const img = imageRef.current;
-      const currentZoom = zoomRef.current;
-      setBoxSize(next);
-      setOffset((prev) => clampIconCropOffset(prev, img, next, currentZoom));
-    };
-    if (typeof ResizeObserver !== "undefined") {
-      const ro = new ResizeObserver(() => apply());
-      ro.observe(el);
-      return () => ro.disconnect();
-    }
-    globalThis.addEventListener("resize", apply);
-    return () => globalThis.removeEventListener("resize", apply);
-  }, []);
-
-  const onPointerDown = (e: ReactPointerEvent) => {
-    if (status !== "ready") return;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    dragRef.current = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      startOffsetX: offset.x,
-      startOffsetY: offset.y,
-    };
-  };
-
-  const onPointerMove = (e: ReactPointerEvent) => {
-    if (!dragRef.current) return;
-    if (e.pointerId !== dragRef.current.pointerId) return;
-    const dx = e.clientX - dragRef.current.startX;
-    const dy = e.clientY - dragRef.current.startY;
-    setOffset(
-      clampIconCropOffset(
-        { x: dragRef.current.startOffsetX + dx, y: dragRef.current.startOffsetY + dy },
-        image,
-        boxSize,
-        zoom
-      )
-    );
-  };
-
-  const onPointerUp = (e: ReactPointerEvent) => {
-    if (!dragRef.current) return;
-    if (e.pointerId !== dragRef.current.pointerId) return;
-    dragRef.current = null;
-  };
-
-  const onKeyDownCapture = (e: ReactKeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onCancel();
-      return;
-    }
-
-    if (e.key !== "Tab") return;
-    const dialog = dialogRef.current;
-    if (!dialog) {
-      e.preventDefault();
-      return;
-    }
-
-    const focusables = Array.from(
-      dialog.querySelectorAll<HTMLElement>(
-        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
-      )
-    ).filter((el) => !el.hasAttribute("disabled") && el.tabIndex >= 0);
-
-    if (focusables.length === 0) {
-      e.preventDefault();
-      dialog.focus();
-      return;
-    }
-
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    const active = document.activeElement;
-
-    if (e.shiftKey) {
-      if (active === first || active === dialog) {
-        e.preventDefault();
-        last.focus();
-      }
-      return;
-    }
-
-    if (active === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  };
-
-  const confirm = async () => {
-    if (!image) return;
-    const base = getIconCropBaseScale(image, boxSize);
-    const scale = base * zoom;
-
-    const imgW = image.naturalWidth * scale;
-    const imgH = image.naturalHeight * scale;
-    const imageLeft = boxSize / 2 + offset.x - imgW / 2;
-    const imageTop = boxSize / 2 + offset.y - imgH / 2;
-
-    const sx = (0 - imageLeft) / scale;
-    const sy = (0 - imageTop) / scale;
-    const sWidth = boxSize / scale;
-    const sHeight = boxSize / scale;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = outputSize;
-    canvas.height = outputSize;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, outputSize, outputSize);
-    ctx.drawImage(image, sx, sy, sWidth, sHeight, 0, 0, outputSize, outputSize);
-
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((b) => resolve(b), "image/png");
-    });
-    if (!blob) return;
-
-    onConfirm(new File([blob], "pack.png", { type: "image/png" }));
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
-      onKeyDownCapture={onKeyDownCapture}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        tabIndex={-1}
-        className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl outline-none md:p-6"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="text-lg font-extrabold text-slate-800">裁剪封面</div>
-            <div className="mt-1 text-sm text-slate-500">需要 1:1，尺寸 64–256px（PNG）。</div>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="shrink-0 rounded-xl px-3 py-2 text-sm font-bold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
-          >
-            取消
-          </button>
-        </div>
-
-        <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
-          <div className="flex flex-col items-center">
-            <div
-              ref={containerRef}
-              className="relative aspect-square w-full max-w-[22rem] overflow-hidden rounded-2xl bg-slate-100"
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={onPointerUp}
-            >
-              {status === "ready" && imageUrl && image ? (
-                <Image
-                  src={imageUrl}
-                  alt="crop source"
-                  width={image.naturalWidth}
-                  height={image.naturalHeight}
-                  unoptimized
-                  priority
-                  className="absolute left-1/2 top-1/2 select-none"
-                  draggable={false}
-                  style={{
-                    transform: (() => {
-                      const base = getIconCropBaseScale(image, boxSize);
-                      const scale = base * zoom;
-                      return `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`;
-                    })(),
-                    transformOrigin: "center",
-                  }}
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm font-bold text-slate-400">
-                  {status === "error" ? "图片加载失败" : "加载中..."}
-                </div>
-              )}
-
-              <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-slate-200" />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-extrabold text-slate-700">缩放</div>
-              <input
-                type="range"
-                min={1}
-                max={4}
-                step={0.01}
-                value={zoom}
-                onChange={(e) => {
-                  const nextZoom = Number(e.target.value);
-                  setZoom(nextZoom);
-                  setOffset((prev) => clampIconCropOffset(prev, image, boxSize, nextZoom));
-                }}
-                className="mt-3 w-full"
-                disabled={status !== "ready"}
-              />
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-extrabold text-slate-700">导出尺寸</div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {[64, 128, 256].map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setOutputSize(s)}
-                    className={[
-                      "rounded-xl px-3 py-2 text-sm font-bold transition",
-                      outputSize === s
-                        ? "bg-slate-900 text-white"
-                        : "bg-white text-slate-600 hover:bg-slate-100",
-                    ].join(" ")}
-                    disabled={status !== "ready"}
-                  >
-                    {s}×{s}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-auto flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={onCancel}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirm()}
-                disabled={status !== "ready"}
-                className="rounded-xl bg-sky-400 px-4 py-2 text-sm font-bold text-white shadow-[0_4px_14px_0_rgba(56,189,248,0.35)] transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
-              >
-                使用该封面
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function TopBar() {
-  return <div className="h-2 bg-gradient-to-r from-sky-400 via-sky-300 to-sky-500" />;
+  return <div className="h-2 bg-linear-to-r from-sky-400 via-sky-300 to-sky-500" />;
 }
 
 function Sidebar({ step }: { step: Step }) {
   return (
     <aside className="hidden w-64 shrink-0 flex-col space-y-8 md:flex">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-sky-500 text-white shadow-lg">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-sky-400 to-sky-500 text-white shadow-lg">
           <Music className="h-5 w-5" />
         </div>
         <div>
-          <h1 className="text-xl font-extrabold text-slate-800">MC AudioGen</h1>
+          <h1 className="text-xl font-extrabold text-slate-800">MC SoundsGen</h1>
           <p className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-400">
             v1.1
           </p>
@@ -831,7 +539,7 @@ function Sidebar({ step }: { step: Step }) {
       </div>
 
       <div className="relative flex flex-col gap-6 pl-2">
-        <div className="absolute bottom-4 left-[27px] top-4 w-0.5 bg-slate-100" />
+        <div className="absolute bottom-4 left-6.75 top-4 w-0.5 bg-slate-100" />
 
         <StepIndicator
           index={1}
@@ -866,26 +574,6 @@ function Sidebar({ step }: { step: Step }) {
   );
 }
 
-const VANILLA_EVENTS = [
-  "ambient.cave",
-  "block.anvil.land",
-  "block.chest.open",
-  "block.door.toggle",
-  "block.glass.break",
-  "block.grass.step",
-  "block.stone.break",
-  "entity.creeper.primed",
-  "entity.generic.explode",
-  "entity.player.hurt",
-  "entity.player.levelup",
-  "entity.zombie.ambient",
-  "item.totem.use",
-  "ui.button.click",
-  "weather.rain",
-  "music.game",
-  "music.menu",
-] as const;
-
 export default function AudioPackGenerator() {
   const [step, setStep] = useState<Step>(1);
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -903,7 +591,9 @@ export default function AudioPackGenerator() {
     iconPreviewUrl: null,
     modifyVanilla: false,
   });
-  const [iconCropFile, setIconCropFile] = useState<File | null>(null);
+  const [vanillaEventOptions, setVanillaEventOptions] = useState<VanillaEventOption[]>([]);
+  const [vanillaEventLoading, setVanillaEventLoading] = useState(false);
+  const [vanillaEventLoadFailed, setVanillaEventLoadFailed] = useState(false);
 
   const [processing, setProcessing] = useState<{
     title: string;
@@ -930,6 +620,13 @@ export default function AudioPackGenerator() {
       setMeta((prev) => ({ ...prev, modifyVanilla: false }));
     }
   }, [meta.platform, meta.modifyVanilla]);
+
+  useEffect(() => {
+    if (!meta.modifyVanilla) return;
+    setVanillaEventOptions(VANILLA_EVENT_OPTIONS);
+    setVanillaEventLoading(false);
+    setVanillaEventLoadFailed(false);
+  }, [meta.modifyVanilla]);
 
   useEffect(() => {
     if (!meta.iconFile) {
@@ -1006,7 +703,7 @@ export default function AudioPackGenerator() {
     };
   }, []);
 
-  const overlayActive = !ffmpegLoaded || Boolean(iconCropFile);
+  const overlayActive = !ffmpegLoaded;
 
   useEffect(() => {
     const el = contentRef.current;
@@ -1021,7 +718,6 @@ export default function AudioPackGenerator() {
   const resetAll = () => {
     setStep(1);
     setFiles([]);
-    setIconCropFile(null);
     setMeta({
       name: "",
       key: DEFAULT_KEY,
@@ -1047,6 +743,10 @@ export default function AudioPackGenerator() {
     }
 
     try {
+      if (file.type !== "image/png") {
+        alert("封面必须是 PNG 图片。");
+        return;
+      }
       const { width, height } = await getImageNaturalSize(file);
       const isSquare = width === height;
       const within = width >= 64 && height >= 64 && width <= 256 && height <= 256;
@@ -1054,7 +754,13 @@ export default function AudioPackGenerator() {
         setMeta((prev) => ({ ...prev, iconFile: file }));
         return;
       }
-      setIconCropFile(file);
+      if (!isSquare) {
+        alert(`封面必须是 1:1 正方形（当前 ${width}×${height}）。`);
+        return;
+      }
+      const resized = await resizePngToSquare(file, 256);
+      setMeta((prev) => ({ ...prev, iconFile: resized }));
+      alert(`封面已自动调整为 256×256（原图 ${width}×${height}）。`);
     } catch {
       alert("图片读取失败，请重新选择 PNG 图片。");
     }
@@ -1321,17 +1027,6 @@ export default function AudioPackGenerator() {
           maxRetries={3}
         />
       ) : null}
-      {iconCropFile ? (
-        <IconCropModal
-          key={`${iconCropFile.name}-${iconCropFile.size}-${iconCropFile.lastModified}`}
-          file={iconCropFile}
-          onCancel={() => setIconCropFile(null)}
-          onConfirm={(file) => {
-            setIconCropFile(null);
-            setMeta((prev) => ({ ...prev, iconFile: file }));
-          }}
-        />
-      ) : null}
       <div
         ref={contentRef}
         aria-hidden={overlayActive}
@@ -1518,6 +1213,9 @@ export default function AudioPackGenerator() {
                   onAddFiles={onAddFiles}
                   onRemoveFile={onRemoveFile}
                   onUpdateVanillaEvent={onUpdateVanillaEvent}
+                  vanillaEventOptions={vanillaEventOptions}
+                  vanillaEventLoading={vanillaEventLoading}
+                  vanillaEventLoadFailed={vanillaEventLoadFailed}
                 />
 
                 <div className="mt-4 flex shrink-0 items-center justify-between border-t border-slate-100 pt-6">
@@ -1637,12 +1335,13 @@ export default function AudioPackGenerator() {
           </div>
         </main>
       </div>
-
-      <datalist id="vanilla-events">
-        {VANILLA_EVENTS.map((v) => (
-          <option key={v} value={v} />
-        ))}
-      </datalist>
+      {vanillaEventOptions.length > 0 ? (
+        <datalist id="vanilla-events">
+          {vanillaEventOptions.map((v) => (
+            <option key={v.key} value={v.key} />
+          ))}
+        </datalist>
+      ) : null}
     </div>
   );
 }
@@ -1653,12 +1352,18 @@ function FileDropZone({
   onAddFiles,
   onRemoveFile,
   onUpdateVanillaEvent,
+  vanillaEventOptions,
+  vanillaEventLoading,
+  vanillaEventLoadFailed,
 }: {
   modifyVanilla: boolean;
   files: FileItem[];
   onAddFiles: (list: FileList | null) => void;
   onRemoveFile: (id: string) => void;
   onUpdateVanillaEvent: (id: string, value: string) => void;
+  vanillaEventOptions: VanillaEventOption[];
+  vanillaEventLoading: boolean;
+  vanillaEventLoadFailed: boolean;
 }) {
   const [dragOver, setDragOver] = useState(false);
 
@@ -1720,11 +1425,24 @@ function FileDropZone({
                     <div className="mb-1 text-xs text-sky-500">替换原版事件</div>
                     <input
                       list="vanilla-events"
-                      placeholder="选择事件..."
+                      placeholder={
+                        vanillaEventLoading
+                          ? "正在加载事件列表..."
+                          : vanillaEventLoadFailed
+                            ? "事件列表加载失败，请刷新页面"
+                            : "选择事件..."
+                      }
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
                       value={f.vanillaEvent}
                       onChange={(e) => onUpdateVanillaEvent(f.id, e.target.value)}
                     />
+                    <div className="mt-1 text-[11px] font-bold text-slate-400">
+                      {vanillaEventLoading
+                        ? "正在加载..."
+                        : vanillaEventLoadFailed
+                          ? "加载失败"
+                          : `已加载 ${vanillaEventOptions.length} 个事件`}
+                    </div>
                   </div>
                 </>
               ) : (
