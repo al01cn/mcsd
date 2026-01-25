@@ -47,7 +47,7 @@ function createWindow() {
     // 🧠 推荐开启
     useContentSize: true,
     icon: path.join(process.env.VITE_PUBLIC, 'favicon.png'),
-    title: 'OneTunnel',
+    title: 'Minecraft Sounds',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: true,

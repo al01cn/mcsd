@@ -1,1 +1,26 @@
-"use strict";const r=require("electron");r.contextBridge.exposeInMainWorld("ipcRenderer",{on(...e){const[n,t]=e;return r.ipcRenderer.on(n,(o,...i)=>t(o,...i))},off(...e){const[n,...t]=e;return r.ipcRenderer.off(n,...t)},send(...e){const[n,...t]=e;return r.ipcRenderer.send(n,...t)},invoke(...e){const[n,...t]=e;return r.ipcRenderer.invoke(n,...t)}});r.contextBridge.exposeInMainWorld("windowControl",{minimize:()=>r.ipcRenderer.send("window:minimize"),close:()=>r.ipcRenderer.send("window:close")});r.contextBridge.exposeInMainWorld("system",{openBrowser:e=>r.ipcRenderer.send("system:openUrl",e),getVersion:()=>r.ipcRenderer.invoke("system:version"),log:(e,n,t)=>{r.ipcRenderer.send("system:log",{level:e,message:n,data:t})}});r.contextBridge.exposeInMainWorld("mojang",{getProfile:e=>r.ipcRenderer.invoke("mojang:getProfile",e)});r.contextBridge.exposeInMainWorld("minecraft",{getDetect(){return r.ipcRenderer.invoke("minecraft:detect")},getServerStatus:(e,n,t)=>r.ipcRenderer.invoke("minecraft:status",e,n,t)});r.contextBridge.exposeInMainWorld("frp",{natfrp_getNodes:e=>r.ipcRenderer.invoke("frp:natfrp.getNodes",e),natfrp_nodeStats:e=>r.ipcRenderer.invoke("frp:natfrp.nodeStats",e),natfrp_getMergedNodes:e=>r.ipcRenderer.invoke("frp:natfrp.getMergedNodes",e),natfrp_tunnelInfo:e=>r.ipcRenderer.invoke("frp:natfrp.getTunnels",e),natfrp_tunnelCreate:(e,n,t)=>r.ipcRenderer.invoke("frp:natfrp.tunnelCreate",e,n,t),natfrp_tunnelEdit:(e,n,t)=>r.ipcRenderer.invoke("frp:natfrp.tunnelEdit",e,n,t),natfrp_userInfo:e=>r.ipcRenderer.invoke("frp:natfrp.userInfo",e)});r.contextBridge.exposeInMainWorld("sakurafrp",{exists:()=>r.ipcRenderer.invoke("sakurafrp:exists"),download:()=>r.ipcRenderer.invoke("sakurafrp:download"),onProgress:e=>{r.ipcRenderer.on("sakurafrp:progress",(n,t)=>e(t))},start:(e,n)=>r.ipcRenderer.invoke("frpc:start",e,n),stop:e=>r.ipcRenderer.invoke("frpc:stop",e),onLog:e=>{r.ipcRenderer.on("frpc:log",(n,t)=>e(t))}});r.contextBridge.exposeInMainWorld("platformAPI",{list:()=>r.ipcRenderer.invoke("platform:list"),add:e=>r.ipcRenderer.invoke("platform:add",e),update:(e,n)=>r.ipcRenderer.invoke("platform:update",e,n),enable:e=>r.ipcRenderer.invoke("platform:enable",e),disable:e=>r.ipcRenderer.invoke("platform:disable",e),remove:e=>r.ipcRenderer.invoke("platform:remove",e)});r.contextBridge.exposeInMainWorld("mcproxy",{start:e=>r.ipcRenderer.send("mcproxy:start",e),stop:e=>r.ipcRenderer.send("mcproxy:stop",e),onStatus:e=>{const n=(t,o)=>e(o);return r.ipcRenderer.on("mcproxy:status",n),()=>{r.ipcRenderer.removeListener("mcproxy:status",n)}},getTcpDelay:(e,n)=>r.ipcRenderer.invoke("network:tcp",e,n)});
+"use strict";
+const electron = require("electron");
+electron.contextBridge.exposeInMainWorld("ipcRenderer", {
+  on(...args) {
+    const [channel, listener] = args;
+    return electron.ipcRenderer.on(channel, (event, ...args2) => listener(event, ...args2));
+  },
+  off(...args) {
+    const [channel, ...omit] = args;
+    return electron.ipcRenderer.off(channel, ...omit);
+  },
+  send(...args) {
+    const [channel, ...omit] = args;
+    return electron.ipcRenderer.send(channel, ...omit);
+  },
+  invoke(...args) {
+    const [channel, ...omit] = args;
+    return electron.ipcRenderer.invoke(channel, ...omit);
+  }
+  // You can expose other APTs you need here.
+  // ...
+});
+electron.contextBridge.exposeInMainWorld("windowControl", {
+  minimize: () => electron.ipcRenderer.send("window:minimize"),
+  close: () => electron.ipcRenderer.send("window:close")
+});
