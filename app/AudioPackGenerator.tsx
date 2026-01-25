@@ -445,7 +445,7 @@ function FfmpegInlineStatus({
   return (
     <div
       className={[
-        "inline-flex max-w-full flex-wrap items-center justify-end gap-x-2 gap-y-1 rounded-xl border px-3 py-2 text-xs font-bold",
+        "inline-flex max-w-full flex-wrap items-center justify-end gap-x-2 gap-y-1 rounded-xl border px-3 py-2 text-[11px] font-bold sm:text-xs",
         view.className,
       ].join(" ")}
     >
@@ -453,7 +453,9 @@ function FfmpegInlineStatus({
       <span className="shrink-0">FFmpeg</span>
       <span className="text-slate-400">·</span>
       <span className="wrap-break-word text-right">{view.label}</span>
-      {view.showSpinner ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : null}
+      {view.showSpinner ? (
+        <Loader2 className="hidden h-3.5 w-3.5 shrink-0 animate-spin md:inline-block" />
+      ) : null}
     </div>
   );
 }
@@ -643,18 +645,134 @@ function TopBar() {
   return <div className="h-2 bg-linear-to-r from-sky-400 via-sky-300 to-sky-500" />;
 }
 
-function Sidebar({ step }: { step: Step }) {
+function MobileStepBar({
+  step,
+  ffmpegLoaded,
+  ffmpegGiveUp,
+  ffmpegRetryCount,
+  ffmpegMaxRetries,
+}: {
+  step: Step;
+  ffmpegLoaded: boolean;
+  ffmpegGiveUp: boolean;
+  ffmpegRetryCount: number;
+  ffmpegMaxRetries: number;
+}) {
+  const steps: Array<{ index: Step; title: string }> = [
+    { index: 1, title: "基本信息" },
+    { index: 2, title: "导入音频" },
+    { index: 3, title: "格式转换" },
+    { index: 4, title: "打包下载" },
+    { index: 5, title: "生成命令" },
+  ];
+
+  return (
+    <div className="md:hidden">
+      <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center gap-3 px-3 py-3 sm:px-4 sm:py-4 justify-between">
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-linear-to-br from-sky-400 to-sky-500 text-white shadow-lg">
+              <Music className="h-4.5 w-4.5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-extrabold text-slate-800 sm:text-base">MC SoundsGen</div>
+              <div className="text-[11px] font-bold text-slate-400 sm:text-xs">步骤 {step}/5</div>
+            </div>
+          </div>
+
+          <div className="flex justify-end px-3 pb-2 sm:px-4">
+            <FfmpegInlineStatus
+              loaded={ffmpegLoaded}
+              giveUp={ffmpegGiveUp}
+              retryCount={ffmpegRetryCount}
+              maxRetries={ffmpegMaxRetries}
+            />
+          </div>
+        </div>
+
+
+        <div className="px-3 pb-3 sm:px-4 sm:pb-4">
+          <div className="flex gap-2 overflow-x-auto">
+            {steps.map((s) => {
+              const active = step === s.index;
+              const completed = step > s.index;
+              return (
+                <div
+                  key={s.index}
+                  className={[
+                    "shrink-0 rounded-xl border px-2.5 py-2 sm:px-3",
+                    active
+                      ? "border-sky-200 bg-sky-50"
+                      : completed
+                        ? "border-emerald-200 bg-emerald-50"
+                        : "border-slate-200 bg-slate-50",
+                  ].join(" ")}
+                >
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={[
+                        "flex h-6 w-6 items-center justify-center rounded-full text-xs font-extrabold",
+                        active
+                          ? "bg-sky-400 text-white"
+                          : completed
+                            ? "bg-emerald-400 text-white"
+                            : "bg-white text-slate-500 ring-1 ring-slate-200",
+                      ].join(" ")}
+                    >
+                      {completed ? <Check className="h-3.5 w-3.5" /> : s.index}
+                    </div>
+                    <div
+                      className={[
+                        "whitespace-nowrap text-[11px] font-bold sm:text-xs",
+                        active ? "text-sky-700" : "text-slate-600",
+                      ].join(" ")}
+                    >
+                      {s.title}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Sidebar({
+  step,
+  ffmpegLoaded,
+  ffmpegGiveUp,
+  ffmpegRetryCount,
+  ffmpegMaxRetries,
+}: {
+  step: Step;
+  ffmpegLoaded: boolean;
+  ffmpegGiveUp: boolean;
+  ffmpegRetryCount: number;
+  ffmpegMaxRetries: number;
+}) {
   return (
     <aside className="hidden w-64 shrink-0 flex-col space-y-8 md:flex">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-sky-400 to-sky-500 text-white shadow-lg">
-          <Music className="h-5 w-5" />
-        </div>
-        <div>
-          <h1 className="text-xl font-extrabold text-slate-800">MC SoundsGen</h1>
-          <p className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-400">
-            v1.1
-          </p>
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-sky-400 to-sky-500 text-white shadow-lg">
+            <Music className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-extrabold text-slate-800">MC SoundsGen</h1>
+            <p className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-400">
+              v1.1
+            </p>
+
+            <FfmpegInlineStatus
+              loaded={ffmpegLoaded}
+              giveUp={ffmpegGiveUp}
+              retryCount={ffmpegRetryCount}
+              maxRetries={ffmpegMaxRetries}
+            />
+          </div>
         </div>
       </div>
 
@@ -786,28 +904,28 @@ export default function AudioPackGenerator() {
     const content =
       meta.platform === "java"
         ? [
-            `主Key: ${key}`,
-            "",
-            "Java 1.7.10 及以下",
-            ...(linesOldJava.length ? linesOldJava : ["暂无音频文件"]),
-            "",
-            "Java 1.8 及以上",
-            ...(linesNewJava.length ? linesNewJava : ["暂无音频文件"]),
-            "",
-            "Java 停止声音 (1.9.3 及以上支持)",
-            ...(linesStopJava.length ? linesStopJava : ["暂无音频文件"]),
-            "",
-          ].join("\n")
+          `主Key: ${key}`,
+          "",
+          "Java 1.7.10 及以下",
+          ...(linesOldJava.length ? linesOldJava : ["暂无音频文件"]),
+          "",
+          "Java 1.8 及以上",
+          ...(linesNewJava.length ? linesNewJava : ["暂无音频文件"]),
+          "",
+          "Java 停止声音 (1.9.3 及以上支持)",
+          ...(linesStopJava.length ? linesStopJava : ["暂无音频文件"]),
+          "",
+        ].join("\n")
         : [
-            `主Key: ${key}`,
-            "",
-            "基岩版",
-            ...(linesBedrock.length ? linesBedrock : ["暂无音频文件"]),
-            "",
-            "基岩版 停止声音",
-            ...linesStopBedrock,
-            "",
-          ].join("\n");
+          `主Key: ${key}`,
+          "",
+          "基岩版",
+          ...(linesBedrock.length ? linesBedrock : ["暂无音频文件"]),
+          "",
+          "基岩版 停止声音",
+          ...linesStopBedrock,
+          "",
+        ].join("\n");
 
     saveAs(new Blob([content], { type: "text/plain;charset=utf-8" }), `${safeName}_playsound.txt`);
   };
@@ -1235,22 +1353,27 @@ export default function AudioPackGenerator() {
       <div
         ref={contentRef}
         aria-hidden={overlayActive}
-        className="mx-auto flex h-full max-w-6xl gap-8 p-4 md:p-8"
+        className="mx-auto flex h-full max-w-6xl flex-col gap-4 p-4 md:flex-row md:gap-8 md:p-8"
       >
-        <Sidebar step={step} />
+        <MobileStepBar
+          step={step}
+          ffmpegLoaded={ffmpegLoaded}
+          ffmpegGiveUp={ffmpegGiveUp}
+          ffmpegRetryCount={ffmpegRetryCount}
+          ffmpegMaxRetries={3}
+        />
+        <Sidebar
+          step={step}
+          ffmpegLoaded={ffmpegLoaded}
+          ffmpegGiveUp={ffmpegGiveUp}
+          ffmpegRetryCount={ffmpegRetryCount}
+          ffmpegMaxRetries={3}
+        />
 
-        <main className="relative flex h-full flex-1 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           <TopBar />
 
-          <div className="flex-1 overflow-y-auto p-4 md:p-8">
-            <div className="mb-4 flex justify-end">
-              <FfmpegInlineStatus
-                loaded={ffmpegLoaded}
-                giveUp={ffmpegGiveUp}
-                retryCount={ffmpegRetryCount}
-                maxRetries={3}
-              />
-            </div>
+          <div className={["flex-1 p-4 md:p-8", step === 5 ? "overflow-hidden" : "overflow-y-auto"].join(" ")}>
             {step === 1 ? (
               <div className="mx-auto max-w-xl">
                 <div className="mb-8 text-center">
@@ -1578,119 +1701,131 @@ export default function AudioPackGenerator() {
             ) : null}
 
             {step === 5 ? (
-              <div className="mx-auto flex h-full max-w-3xl flex-col">
-                <div className="mb-6 flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="mb-2 text-3xl font-extrabold text-slate-800">生成命令</h2>
-                    <p className="text-sm text-slate-500">在游戏内使用 /playsound 播放资源包里的声音。</p>
+              <div className="mx-auto flex h-full max-w-3xl flex-col overflow-hidden">
+                <div className="shrink-0 border-b border-slate-100 pb-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="mb-1 text-xl font-extrabold text-slate-800 sm:text-2xl md:mb-2 md:text-3xl">
+                        生成命令
+                      </h2>
+                      <p className="text-[11px] text-slate-500 sm:text-xs md:text-sm">
+                        在游戏内使用 /playsound 播放资源包里的声音。
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={downloadCommandsTxt}
+                      className="inline-flex items-center rounded-xl bg-slate-900 px-2.5 py-2 text-[11px] font-bold text-white transition hover:bg-slate-800 sm:px-3 sm:text-xs md:px-4 md:text-sm"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      下载 TXT
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={downloadCommandsTxt}
-                    className="inline-flex items-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800"
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    下载 TXT
-                  </button>
                 </div>
 
-                {(() => {
-                  const key = normalizeKey(meta.key);
-                  const soundNames = files.map((f) => {
-                    if (meta.modifyVanilla) {
-                      const event = f.vanillaEvent.trim();
-                      return event || `${key}.${f.newName}`;
-                    }
-                    return `${key}.${f.newName}`;
-                  });
+                <div className="flex-1 overflow-y-auto pt-4">
+                  {(() => {
+                    const key = normalizeKey(meta.key);
+                    const soundNames = files.map((f) => {
+                      if (meta.modifyVanilla) {
+                        const event = f.vanillaEvent.trim();
+                        return event || `${key}.${f.newName}`;
+                      }
+                      return `${key}.${f.newName}`;
+                    });
 
-                  const linesOldJava = soundNames.map((s) => `/playsound ${s} @a ~ ~ ~ 10000`);
-                  const linesNewJava = soundNames.map((s) => `/playsound ${s} record @a ~ ~ ~ 10000`);
-                  const linesStopJava = soundNames.map((s) => `/stopsound @a record ${s}`);
-                  const linesBedrock = soundNames.map((s) => `/playsound ${s} @a ~ ~ ~ 10000`);
-                  const linesStopBedrock = soundNames.map((s) => `/stopsound @a ${s}`);
+                    const linesOldJava = soundNames.map((s) => `/playsound ${s} @a ~ ~ ~ 10000`);
+                    const linesNewJava = soundNames.map((s) => `/playsound ${s} record @a ~ ~ ~ 10000`);
+                    const linesStopJava = soundNames.map((s) => `/stopsound @a record ${s}`);
+                    const linesBedrock = soundNames.map((s) => `/playsound ${s} @a ~ ~ ~ 10000`);
+                    const linesStopBedrock = soundNames.map((s) => `/stopsound @a ${s}`);
 
-                  const CommandList = ({
-                    lines,
-                  }: {
-                    lines: string[];
-                  }) => {
-                    if (lines.length === 0) {
+                    const CommandList = ({
+                      lines,
+                    }: {
+                      lines: string[];
+                    }) => {
+                      if (lines.length === 0) {
+                        return (
+                          <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
+                            暂无音频文件
+                          </div>
+                        );
+                      }
+
                       return (
-                        <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
-                          暂无音频文件
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <ul className="space-y-2">
-                        {lines.map((cmd, idx) => (
-                          <li
-                            key={`${idx}-${cmd}`}
-                            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"
-                          >
-                            <code className="min-w-0 flex-1 overflow-x-auto font-mono text-xs text-slate-700">
-                              {cmd}
-                            </code>
-                            <button
-                              type="button"
-                              onClick={() => void copyCommand(cmd)}
-                              className="inline-flex shrink-0 items-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-slate-800"
+                        <ul className="space-y-2">
+                          {lines.map((cmd, idx) => (
+                            <li
+                              key={`${idx}-${cmd}`}
+                              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"
                             >
-                              <Copy className="mr-1.5 h-3.5 w-3.5" />
-                              {copiedCommand === cmd ? "已复制" : "复制"}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+                              <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[11px] text-slate-700 sm:text-xs">
+                                {cmd}
+                              </code>
+                              <button
+                                type="button"
+                                onClick={() => void copyCommand(cmd)}
+                                className="inline-flex shrink-0 items-center rounded-lg bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-white transition hover:bg-slate-800 sm:px-3 sm:text-xs"
+                              >
+                                <Copy className="mr-1.5 h-3.5 w-3.5" />
+                                {copiedCommand === cmd ? "已复制" : "复制"}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      );
+                    };
+
+                    return meta.platform === "java" ? (
+                      <div className="grid gap-6">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                          <div className="mb-2 text-sm font-extrabold text-slate-700">Java 1.7.10 及以下</div>
+                          <CommandList lines={linesOldJava} />
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                          <div className="mb-2 text-sm font-extrabold text-slate-700">Java 1.8 及以上</div>
+                          <CommandList lines={linesNewJava} />
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                          <div className="mb-2 text-sm font-extrabold text-slate-700">
+                            停止声音 (1.9.3 及以上支持)
+                          </div>
+                          <CommandList lines={linesStopJava} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid gap-6">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                          <div className="mb-2 text-sm font-extrabold text-slate-700">基岩版</div>
+                          <CommandList lines={linesBedrock} />
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                          <div className="mb-2 text-sm font-extrabold text-slate-700">停止声音</div>
+                          <CommandList lines={linesStopBedrock} />
+                        </div>
+                      </div>
                     );
-                  };
+                  })()}
+                </div>
 
-                  return meta.platform === "java" ? (
-                    <div className="grid gap-6">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                        <div className="mb-2 text-sm font-extrabold text-slate-700">Java 1.7.10 及以下</div>
-                        <CommandList lines={linesOldJava} />
-                      </div>
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                        <div className="mb-2 text-sm font-extrabold text-slate-700">Java 1.8 及以上</div>
-                        <CommandList lines={linesNewJava} />
-                      </div>
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                        <div className="mb-2 text-sm font-extrabold text-slate-700">停止声音 (1.9.3 及以上支持)</div>
-                        <CommandList lines={linesStopJava} />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid gap-6">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                        <div className="mb-2 text-sm font-extrabold text-slate-700">基岩版</div>
-                        <CommandList lines={linesBedrock} />
-                      </div>
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                        <div className="mb-2 text-sm font-extrabold text-slate-700">停止声音</div>
-                        <CommandList lines={linesStopBedrock} />
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                <div className="mt-8 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => goToStep(4)}
-                    className="inline-flex items-center rounded-xl px-4 py-2 text-sm font-bold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
-                  >
-                    上一步
-                  </button>
-                  <button
-                    type="button"
-                    onClick={resetAll}
-                    className="inline-flex items-center rounded-xl bg-sky-400 px-6 py-3 text-sm font-bold text-white shadow-[0_4px_14px_0_rgba(56,189,248,0.35)] transition hover:bg-sky-300"
-                  >
-                    创建新的资源包
-                  </button>
+                <div className="shrink-0 border-t border-slate-100 pt-4">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => goToStep(4)}
+                      className="inline-flex items-center rounded-xl px-2.5 py-2 text-[11px] font-bold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 sm:px-3 sm:text-xs md:px-4 md:text-sm"
+                    >
+                      上一步
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetAll}
+                      className="inline-flex items-center rounded-xl bg-sky-400 px-4 py-2.5 text-[11px] font-bold text-white shadow-[0_4px_14px_0_rgba(56,189,248,0.35)] transition hover:bg-sky-300 sm:px-5 sm:text-xs md:px-6 md:py-3 md:text-sm"
+                    >
+                      创建新的资源包
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : null}
