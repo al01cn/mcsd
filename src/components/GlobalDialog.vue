@@ -13,14 +13,19 @@ const handleAction = (isConfirm: boolean) => {
     // 2. 关闭弹窗动画
     dialogState.show = false
 }
+
+const handleMaskClick = () => {
+    if (!dialogState.closeOnMask) return
+    handleAction(false)
+}
 </script>
 
 <template>
     <div :class="[
-        'fixed inset-0 z-200 flex items-center justify-center px-4 transition-all duration-300',
+        'absolute inset-0 z-200 flex items-center justify-center px-4 transition-all duration-300',
         dialogState.show ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
     ]">
-        <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-md" @click="handleAction(false)"></div>
+        <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-md" @click="handleMaskClick"></div>
 
         <div :class="[
             'modal-content relative bg-white w-full max-w-85 rounded-4xl shadow-modal border border-slate-100 overflow-hidden transition-all duration-300 transform',

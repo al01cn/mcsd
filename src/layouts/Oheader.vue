@@ -2,8 +2,9 @@
 import { useRoute, useRouter } from 'vue-router'
 import { Minus, X } from 'lucide-vue-next';
 import config from '../lib/config'
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import GlobalDialog from '../components/GlobalDialog.vue';
+import { Dialog } from '../lib/useDialog'
 
 const route = useRoute();
 const router = useRouter();
@@ -27,6 +28,14 @@ const toPage = (e: Event, path: string) => {
     // 3. 使用 router.push 执行手动跳转
     router.push(path);
 }
+
+onMounted(() => {
+    Dialog.info({
+        title: '提示',
+        msg: '这里点击遮罩不会关闭',
+        closeOnMask: false
+    })
+})
 
 const close = () => {
     (window as any).windowControl.close();

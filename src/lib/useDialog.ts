@@ -11,6 +11,9 @@ export const typeConfig = {
 interface DialogOptions {
     title?: string
     msg?: string
+    context?: string
+    message?: string
+    closeOnMask?: boolean
     confirmText?: string
     cancelText?: string
     onConfirm?: () => void
@@ -22,6 +25,7 @@ export const dialogState = reactive({
     type: 'info' as keyof typeof typeConfig,
     title: '',
     msg: '',
+    closeOnMask: true,
     confirmText: '确定',
     cancelText: '取消',
     // 存储回调函数
@@ -32,7 +36,10 @@ export const dialogState = reactive({
 const openDialog = (type: keyof typeof typeConfig, options: DialogOptions) => {
     dialogState.type = type
     dialogState.title = options.title || '提示'
-    dialogState.msg = options.msg || ''
+    dialogState.msg = options.msg || '' 
+    dialogState.msg = options.context || ''
+    dialogState.msg = options.message || ''
+    dialogState.closeOnMask = options.closeOnMask ?? true
     dialogState.confirmText = options.confirmText || '确定'
     dialogState.cancelText = options.cancelText || '取消'
 
