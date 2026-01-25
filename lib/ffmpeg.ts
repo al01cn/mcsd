@@ -1,5 +1,8 @@
 export type FFmpegStatus = "idle" | "loading" | "success" | "error";
 
+const FFMPEG_CORE_CACHE_NAME = "mcsd_ffmpeg_core_cache_v1";
+const FFMPEG_PREFERRED_CDN_KEY = "mcsd_ffmpeg_preferred_cdn_v1";
+
 export class FFmpegService {
   private static instance: FFmpegService;
   private ffmpeg: import("@ffmpeg/ffmpeg").FFmpeg | null = null;
@@ -74,7 +77,19 @@ export class FFmpegService {
 
         this.ffmpeg = new FFmpeg();
         this.fetchFile = util.fetchFile;
-        this.toBlobURL = util.toBlobURL;
+        this.toBlobURL = async (url: string, mimeType: string) => {
+          if (typeof caches === "undefined") return util.toBlobURL(url, mimeType);
+
+          const cache = await caches.open(FFMPEG_CORE_CACHE_NAME);
+          const cached = await cache.match(url);
+          const response = cached ?? (await fetch(url, { cache: "force-cache" }));
+          if (!response.ok) throw new Error(`ffmpeg core fetch failed: ${response.status} ${response.statusText}`);
+          if (!cached) await cache.put(url, response.clone());
+
+          const buffer = await response.arrayBuffer();
+          const blob = new Blob([buffer], { type: mimeType });
+          return URL.createObjectURL(blob);
+        };
 
         this.ffmpeg.on("progress", ({ progress }) => {
           const value = Math.min(100, Math.round(progress * 100));
@@ -87,13 +102,31 @@ export class FFmpegService {
           "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm",
         ] as const;
 
+        const preferredBase = (() => {
+          try {
+            const value = localStorage.getItem(FFMPEG_PREFERRED_CDN_KEY);
+            return cdnBases.includes(value as (typeof cdnBases)[number]) ? (value as (typeof cdnBases)[number]) : null;
+          } catch {
+            return null;
+          }
+        })();
+
+        const baseCandidates = preferredBase
+          ? [preferredBase, ...cdnBases.filter((v) => v !== preferredBase)]
+          : [...cdnBases];
+
         let lastError: unknown = null;
-        for (const baseURL of cdnBases) {
+        for (const baseURL of baseCandidates) {
           try {
             await this.ffmpeg.load({
               coreURL: await this.toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
               wasmURL: await this.toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
             });
+            try {
+              localStorage.setItem(FFMPEG_PREFERRED_CDN_KEY, baseURL);
+            } catch {
+              void 0;
+            }
             lastError = null;
             break;
           } catch (err) {

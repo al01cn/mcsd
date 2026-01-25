@@ -32,6 +32,7 @@ import {
 import ffmpeg from "../lib/ffmpeg";
 import mcVersions, { type JavaPackVersion } from "../lib/mcver";
 import { vanillaSoundBedrock, vanillaSoundJava } from "../lib/sounds";
+import WebConfig from "../lib/config";
 
 type PackPlatform = "java" | "bedrock";
 
@@ -420,7 +421,7 @@ function FfmpegInlineStatus({
     if (loaded) {
       return {
         label: "已就绪",
-        className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        className: "border-none text-emerald-700",
         dot: "bg-emerald-500",
         showSpinner: false,
       };
@@ -428,7 +429,7 @@ function FfmpegInlineStatus({
     if (giveUp) {
       return {
         label: "加载失败",
-        className: "border-red-200 bg-red-50 text-red-700",
+        className: "border-none text-red-700",
         dot: "bg-red-500",
         showSpinner: false,
       };
@@ -436,14 +437,14 @@ function FfmpegInlineStatus({
     if (retryCount > 0) {
       return {
         label: `重试中（${retryCount}/${maxRetries}）`,
-        className: "border-sky-200 bg-sky-50 text-sky-700",
+        className: "border-none text-sky-700",
         dot: "bg-sky-500",
         showSpinner: true,
       };
     }
     return {
       label: "加载中",
-      className: "border-slate-200 bg-slate-50 text-slate-700",
+      className: "border-none text-slate-700",
       dot: "bg-slate-500",
       showSpinner: true,
     };
@@ -799,7 +800,7 @@ function MobileStepBar({
             </div>
             <div className="min-w-0">
               <div className="text-sm font-extrabold text-slate-800 sm:text-base">MC SoundsGen</div>
-              <div className="text-[11px] font-bold text-slate-400 sm:text-xs">步骤 {step}/5</div>
+              <div className="text-[11px] font-bold text-slate-400 sm:text-xs">版本：v{WebConfig.appVersion}</div>
             </div>
           </div>
 
@@ -886,7 +887,7 @@ function Sidebar({
           <div>
             <h1 className="text-xl font-extrabold text-slate-800">MC SoundsGen</h1>
             <p className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-400">
-              v1.1
+              v{WebConfig.appVersion}
             </p>
 
             <FfmpegInlineStatus
