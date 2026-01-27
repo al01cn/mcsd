@@ -34,6 +34,7 @@ import ffmpeg from "../lib/ffmpeg";
 import mcVersions, { type JavaPackVersion } from "../lib/mcver";
 import { vanillaSoundBedrock, vanillaSoundJava } from "../lib/sounds";
 import WebConfig from "../lib/config";
+import updateLogs from "../lib/update_logs";
 
 type PackPlatform = "java" | "bedrock";
 
@@ -1062,15 +1063,189 @@ function DisclaimerOverlay({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end">
+      </div>
+    </div>
+  );
+}
+
+function UpdateLogsOverlay({ onClose }: { onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const lastActiveRef = useRef<HTMLElement | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    lastActiveRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.focus();
+    return () => {
+      lastActiveRef.current?.focus?.();
+    };
+  }, []);
+
+  const buildCollapsedText = (text: string) => {
+    const normalized = text.replace(/\r\n/g, "\n").trim();
+    if (!normalized) return { text: "暂无内容", truncated: false };
+
+    const lines = normalized.split("\n");
+    const maxLines = 4;
+    const maxChars = 180;
+
+    const linePart = lines.slice(0, Math.min(maxLines, lines.length)).join("\n").trimEnd();
+    if (linePart.length >= maxChars) {
+      return { text: `${linePart.slice(0, maxChars).trimEnd()}…`, truncated: true };
+    }
+    const truncated = lines.length > maxLines || normalized.length > linePart.length;
+    return { text: truncated ? `${linePart}\n…` : linePart, truncated };
+  };
+
+  const compareVersionsDesc = (a: string, b: string) => {
+    const ap = a.split(".").map((v) => Number(v));
+    const bp = b.split(".").map((v) => Number(v));
+    const maxLen = Math.max(ap.length, bp.length);
+    for (let i = 0; i < maxLen; i += 1) {
+      const av = Number.isFinite(ap[i]) ? ap[i] : 0;
+      const bv = Number.isFinite(bp[i]) ? bp[i] : 0;
+      if (av > bv) return -1;
+      if (av < bv) return 1;
+    }
+    return b.localeCompare(a);
+  };
+
+  const entries = (Object.entries(updateLogs) as Array<[string, { date?: string; logs: string }]>).sort(
+    ([a], [b]) => compareVersionsDesc(a, b)
+  );
+
+  const onKeyDownCapture = (e: ReactKeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (e.key !== "Tab") return;
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      e.preventDefault();
+      return;
+    }
+
+    const focusables = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => !el.hasAttribute("disabled") && el.tabIndex >= 0);
+
+    if (focusables.length === 0) {
+      e.preventDefault();
+      dialog.focus();
+      return;
+    }
+
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+
+    if (e.shiftKey) {
+      if (active === first || active === dialog) {
+        e.preventDefault();
+        last.focus();
+      }
+      return;
+    }
+
+    if (active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/40 p-6 backdrop-blur-sm"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDownCapture={onKeyDownCapture}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="更新日志"
+        tabIndex={-1}
+        className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-xl outline-none"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-base font-extrabold text-slate-800">更新日志</div>
+            <div className="mt-1 text-sm text-slate-500">当前版本：v{WebConfig.appVersion}</div>
+          </div>
           <button
             type="button"
+            aria-label="关闭"
             onClick={onClose}
-            className="inline-flex items-center rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
           >
-            我知道了
+            <X className="h-4 w-4" />
           </button>
         </div>
+
+        <div className="mt-4 max-h-[60vh] overflow-y-auto pr-1">
+          <div className="relative pl-6">
+            <div className="absolute bottom-2 left-2 top-2 w-px bg-slate-200" />
+            <div className="space-y-5">
+              {entries.map(([version, item]) => {
+                const isCurrent = version === WebConfig.appVersion;
+                const rawLogsText = item.logs?.trim() ? item.logs.trim() : "暂无内容";
+                const isExpanded = expanded[version] === true;
+                const collapsed = buildCollapsedText(rawLogsText);
+                const logsText = isExpanded ? rawLogsText : collapsed.text;
+                return (
+                  <div key={version} className="relative">
+                    <div
+                      className={[
+                        "absolute left-2 top-1 h-3 w-3 -translate-x-1/2 rounded-full ring-4",
+                        isCurrent ? "bg-sky-400 ring-sky-100" : "bg-slate-300 ring-slate-100",
+                      ].join(" ")}
+                    />
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="text-sm font-extrabold text-slate-800">v{version}</div>
+                          {isCurrent ? (
+                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-extrabold text-sky-700">
+                              当前
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {item.date ? <div className="text-xs font-bold text-slate-400">{item.date}</div> : null}
+                          {collapsed.truncated ? (
+                            <button
+                              type="button"
+                              aria-expanded={isExpanded}
+                              onClick={() =>
+                                setExpanded((prev) => ({
+                                  ...prev,
+                                  [version]: !(prev[version] === true),
+                                }))
+                              }
+                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-extrabold text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                            >
+                              <span>{isExpanded ? "收起" : "展开"}</span>
+                              <ChevronDown className={["h-3.5 w-3.5 transition", isExpanded ? "rotate-180" : ""].join(" ")} />
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="mt-2 whitespace-pre-wrap text-[13px] text-slate-700">{logsText}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   );
@@ -1262,12 +1437,14 @@ function MobileStepBar({
   ffmpegGiveUp,
   ffmpegRetryCount,
   ffmpegMaxRetries,
+  onOpenUpdateLogs,
 }: {
   step: Step;
   ffmpegLoaded: boolean;
   ffmpegGiveUp: boolean;
   ffmpegRetryCount: number;
   ffmpegMaxRetries: number;
+  onOpenUpdateLogs: () => void;
 }) {
   const steps: Array<{ index: Step; title: string }> = [
     { index: 1, title: "基本信息" },
@@ -1287,7 +1464,13 @@ function MobileStepBar({
             </div>
             <div className="min-w-0">
               <div className="text-sm font-extrabold text-slate-800 sm:text-base">MC SoundsGen</div>
-              <div className="text-[11px] font-bold text-slate-400 sm:text-xs">版本：v{WebConfig.appVersion}</div>
+              <button
+                type="button"
+                onClick={onOpenUpdateLogs}
+                className="text-left text-[11px] font-bold text-slate-400 underline decoration-dotted underline-offset-2 transition hover:text-slate-600 sm:text-xs"
+              >
+                版本：v{WebConfig.appVersion}
+              </button>
             </div>
           </div>
 
@@ -1357,12 +1540,14 @@ function Sidebar({
   ffmpegGiveUp,
   ffmpegRetryCount,
   ffmpegMaxRetries,
+  onOpenUpdateLogs,
 }: {
   step: Step;
   ffmpegLoaded: boolean;
   ffmpegGiveUp: boolean;
   ffmpegRetryCount: number;
   ffmpegMaxRetries: number;
+  onOpenUpdateLogs: () => void;
 }) {
   return (
     <aside className="hidden w-64 shrink-0 flex-col space-y-8 lg:flex">
@@ -1373,9 +1558,13 @@ function Sidebar({
           </div>
           <div>
             <h1 className="text-xl font-extrabold text-slate-800">MC SoundsGen</h1>
-            <p className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-400">
+            <button
+              type="button"
+              onClick={onOpenUpdateLogs}
+              className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-400 underline decoration-dotted underline-offset-2 transition hover:bg-slate-50 hover:text-slate-600"
+            >
               v{WebConfig.appVersion}
-            </p>
+            </button>
 
             <FfmpegInlineStatus
               loaded={ffmpegLoaded}
@@ -1471,6 +1660,7 @@ export default function AudioPackGenerator() {
   const [audioProgress, setAudioProgress] = useState<Record<string, AudioProgressItem>>({});
   const logsEndRef = useRef<HTMLDivElement | null>(null);
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
+  const [updateLogsOpen, setUpdateLogsOpen] = useState(false);
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const [guidePhase, setGuidePhase] = useState<"main" | "vanilla">("main");
@@ -1648,6 +1838,10 @@ export default function AudioPackGenerator() {
     } catch {
       void 0;
     }
+  };
+
+  const closeUpdateLogs = () => {
+    setUpdateLogsOpen(false);
   };
 
   const copyCommand = async (text: string) => {
@@ -2583,6 +2777,7 @@ export default function AudioPackGenerator() {
         );
       })()}
       {disclaimerOpen ? <DisclaimerOverlay onClose={closeDisclaimer} /> : null}
+      {updateLogsOpen ? <UpdateLogsOverlay onClose={closeUpdateLogs} /> : null}
       <div
         ref={contentRef}
         aria-hidden={overlayActive}
@@ -2594,6 +2789,7 @@ export default function AudioPackGenerator() {
           ffmpegGiveUp={ffmpegGiveUp}
           ffmpegRetryCount={ffmpegRetryCount}
           ffmpegMaxRetries={3}
+          onOpenUpdateLogs={() => setUpdateLogsOpen(true)}
         />
         <Sidebar
           step={step}
@@ -2601,6 +2797,7 @@ export default function AudioPackGenerator() {
           ffmpegGiveUp={ffmpegGiveUp}
           ffmpegRetryCount={ffmpegRetryCount}
           ffmpegMaxRetries={3}
+          onOpenUpdateLogs={() => setUpdateLogsOpen(true)}
         />
 
         <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">

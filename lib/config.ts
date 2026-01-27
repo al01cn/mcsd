@@ -1,5 +1,7 @@
+import pkg from '../package.json'
+
 export const WebConfig = {
-    appVersion: "1.0.0",
+    appVersion: pkg.version,
     appName: "在线 Minecraft 音频包生成器",
 }
 export default WebConfig
