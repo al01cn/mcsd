@@ -1,12 +1,39 @@
 import type { MetadataRoute } from "next";
+import { headers } from "next/headers";
 
-function getSiteUrl(): URL {
-  return new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000");
+async function getSiteUrl(): Promise<URL | null> {
+  const h = await headers();
+
+  const hostHeader = h.get("x-forwarded-host") ?? h.get("host");
+  const protoHeader = h.get("x-forwarded-proto");
+  const host = hostHeader?.split(",")[0]?.trim();
+  const proto = protoHeader?.split(",")[0]?.trim() || "https";
+
+  if (host) {
+    try {
+      return new URL(`${proto}://${host}`);
+    } catch {
+      void 0;
+    }
+  }
+
+  const env = process.env.NEXT_PUBLIC_SITE_URL;
+  if (env) {
+    try {
+      return new URL(env);
+    } catch {
+      void 0;
+    }
+  }
+
+  return null;
 }
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const siteUrl = getSiteUrl();
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const siteUrl = await getSiteUrl();
   const now = new Date();
+
+  if (!siteUrl) return [];
 
   return [
     {
@@ -17,4 +44,3 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   ];
 }
-
