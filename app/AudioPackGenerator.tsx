@@ -24,10 +24,13 @@ import {
 import NextImage from "next/image";
 import { pinyin } from "pinyin-pro";
 import {
+  createContext,
   useCallback,
   useEffect,
   useRef,
   useState,
+  useContext,
+  useMemo,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import ffmpeg from "../lib/ffmpeg";
@@ -40,9 +43,98 @@ type PackPlatform = "java" | "bedrock";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
+type Lang = "zh" | "en";
+
+type LangContextValue = {
+  lang: Lang;
+  setLang: (lang: Lang) => void;
+  tr: (zh: string, en: string) => string;
+};
+
+const LangContext = createContext<LangContextValue | null>(null);
+
+function useLang() {
+  const ctx = useContext(LangContext);
+  if (!ctx) throw new Error("LangContext not found");
+  return ctx;
+}
+
+function LanguageToggle({
+  className,
+}: {
+  className?: string;
+}) {
+  const { lang, setLang, tr } = useLang();
+
+  return (
+    <div
+      role="group"
+      aria-label={tr("语言切换", "Language")}
+      className={[
+        "inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 lg:p-1.5",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <button
+        type="button"
+        aria-pressed={lang === "zh"}
+        onClick={() => setLang("zh")}
+        className={[
+          "inline-flex items-center justify-center rounded-lg px-2 py-1 text-[11px] font-extrabold transition lg:px-3 lg:py-1.5 lg:text-sm",
+          lang === "zh" ? "bg-white text-slate-800 shadow-sm ring-1 ring-slate-200" : "text-slate-500 hover:text-slate-700",
+        ].join(" ")}
+      >
+        中文
+      </button>
+      <button
+        type="button"
+        aria-pressed={lang === "en"}
+        onClick={() => setLang("en")}
+        className={[
+          "inline-flex items-center justify-center rounded-lg px-2 py-1 text-[11px] font-extrabold transition lg:px-3 lg:py-1.5 lg:text-sm",
+          lang === "en" ? "bg-white text-slate-800 shadow-sm ring-1 ring-slate-200" : "text-slate-500 hover:text-slate-700",
+        ].join(" ")}
+      >
+        EN
+      </button>
+    </div>
+  );
+}
+
+function LanguageToggleCompact({
+  className,
+}: {
+  className?: string;
+}) {
+  const { lang, setLang, tr } = useLang();
+  const label = lang === "zh" ? "中" : "EN";
+  return (
+    <button
+      type="button"
+      aria-label={tr("切换语言", "Toggle language")}
+      onClick={() => setLang(lang === "zh" ? "en" : "zh")}
+      className={[
+        "inline-flex h-7 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-[11px] font-extrabold text-slate-600 transition hover:bg-slate-100 hover:text-slate-800",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {label}
+    </button>
+  );
+}
+
 function noop() {}
 
 function noopGoToStep() {}
+
+const trNoop = (zh: string, en: string) => {
+  void en;
+  return zh;
+};
 
 type FileItem = {
   id: string;
@@ -138,6 +230,7 @@ function buildPackDescription(desc: string) {
 }
 
 function buildImmersiveGuideItems({
+  tr,
   step,
   platform,
   guidePhase,
@@ -148,6 +241,7 @@ function buildImmersiveGuideItems({
   enableModifyVanilla,
   startVanillaGuide,
 }: {
+  tr: (zh: string, en: string) => string;
   step: Step;
   platform: PackPlatform;
   guidePhase: "main" | "vanilla";
@@ -161,15 +255,18 @@ function buildImmersiveGuideItems({
   if (guidePhase === "vanilla") {
     const step1: GuideItem[] = [
       {
-        title: "打开“修改原版音频”",
-        desc: "如果想替换原版声音事件，需要打开开关。",
+        title: tr("打开“修改原版音频”", "Enable “Replace Vanilla Sounds”"),
+        desc: tr("如果想替换原版声音事件，需要打开开关。", "Turn this on to map new sounds to vanilla events."),
         anchorKey: "step1ModifyVanilla",
       },
       {
-        title: "继续下一步",
-        desc: "点击“下一步”返回导入音频，继续完成替换原版事件与开始处理。",
+        title: tr("继续下一步", "Continue"),
+        desc: tr(
+          "点击“下一步”返回导入音频，继续完成替换原版事件与开始处理。",
+          "Click “Next” to return and continue mapping events and processing."
+        ),
         anchorKey: "step1Next",
-        primaryLabel: "下一步",
+        primaryLabel: tr("下一步", "Next"),
         primaryAction: () => {
           enableModifyVanilla();
           goToStep(2);
@@ -179,15 +276,18 @@ function buildImmersiveGuideItems({
 
     const step2: GuideItem[] = [
       {
-        title: "选择要替换的原版事件",
-        desc: "为每个文件选择 minecraft:... 原版声音事件；留空则不替换。",
+        title: tr("选择要替换的原版事件", "Choose Vanilla Events"),
+        desc: tr(
+          "为每个文件选择 minecraft:... 原版声音事件；留空则不替换。",
+          "Pick a minecraft:... sound event for each file; leave empty to skip."
+        ),
         anchorKey: "step2VanillaEvent",
       },
       {
-        title: "进入第三步",
-        desc: "确认无误后点击“开始处理”，进入第三步继续引导。",
+        title: tr("进入第三步", "Go to Step 3"),
+        desc: tr("确认无误后点击“开始处理”，进入第三步继续引导。", "Click “Process” to continue the guide."),
         anchorKey: "step2StartProcessing",
-        primaryLabel: "开始处理",
+        primaryLabel: tr("开始处理", "Process"),
         primaryAction: startProcessing,
       },
     ];
@@ -199,76 +299,82 @@ function buildImmersiveGuideItems({
 
   const step1: GuideItem[] = [
     {
-      title: "上传封面（可选）",
-      desc: "建议上传 256×256 PNG；会用于资源包图标显示。",
+      title: tr("上传封面（可选）", "Upload Icon (Optional)"),
+      desc: tr("建议上传 256×256 PNG；会用于资源包图标显示。", "Recommended: 256×256 PNG for the pack icon."),
       anchorKey: "step1Icon",
     },
-    { title: "填写音频包名称", desc: "必填，用于资源包显示名称。", anchorKey: "step1Name" },
-    { title: "确认主 Key", desc: "必填，用于 assets/.../sounds/<主Key>/ 的文件夹名。", anchorKey: "step1Key" },
-    { title: "选择游戏版本", desc: "Java / 基岩版会影响打包格式与命令生成。", anchorKey: "step1Platform" },
+    { title: tr("填写音频包名称", "Set Pack Name"), desc: tr("必填，用于资源包显示名称。", "Required. Display name in-game."), anchorKey: "step1Name" },
+    { title: tr("确认主 Key", "Confirm Main Key"), desc: tr("必填，用于 assets/.../sounds/<主Key>/ 的文件夹名。", "Required. Folder name under assets/.../sounds/<key>/."), anchorKey: "step1Key" },
+    { title: tr("选择游戏版本", "Choose Edition"), desc: tr("Java / 基岩版会影响打包格式与命令生成。", "Affects pack format and generated commands."), anchorKey: "step1Platform" },
     ...(platform === "java"
       ? [
           {
-            title: "选择资源包版本",
-            desc: "仅 Java 版需要选择；选错不会影响使用，但新版本里可能出现“不兼容”提示。",
+            title: tr("选择资源包版本", "Choose Pack Format"),
+            desc: tr(
+              "仅 Java 版需要选择；选错不会影响使用，但新版本里可能出现“不兼容”提示。",
+              "Java only. Wrong format may still work, but newer versions may show “incompatible”."
+            ),
             anchorKey: "step1JavaPackFormat",
           } as const,
         ]
       : []),
-    { title: "填写简介（可选）", desc: "会自动追加 By mcsd。", anchorKey: "step1Desc" },
+    { title: tr("填写简介（可选）", "Description (Optional)"), desc: tr("会自动追加 By mcsd。", "“By mcsd” is appended automatically."), anchorKey: "step1Desc" },
     {
-      title: "进入下一步",
-      desc: "完成后点击“下一步”开始导入音频。",
+      title: tr("进入下一步", "Next Step"),
+      desc: tr("完成后点击“下一步”开始导入音频。", "Click “Next” to import audio files."),
       anchorKey: "step1Next",
-      primaryLabel: "前往下一步",
+      primaryLabel: tr("前往下一步", "Go Next"),
       primaryAction: () => goToStep(2),
     },
   ];
 
   const step2: GuideItem[] = [
-    { title: "添加音频文件", desc: "点击“添加文件”，或直接把文件拖入页面。", anchorKey: "step2AddFiles" },
+    { title: tr("添加音频文件", "Add Audio Files"), desc: tr("点击“添加文件”，或直接把文件拖入页面。", "Click “Add Files” or drag files into the page."), anchorKey: "step2AddFiles" },
     {
-      title: "拖拽区与重命名",
-      desc: "可在列表里重命名；移动端会弹窗编辑。点击“下一步”进入“修改原版音频”。",
+      title: tr("拖拽区与重命名", "Drop Zone & Rename"),
+      desc: tr(
+        "可在列表里重命名；移动端会弹窗编辑。点击“下一步”进入“修改原版音频”。",
+        "Rename in the list (mobile uses a dialog). Click “Next” to configure vanilla replacement."
+      ),
       anchorKey: "step2DropZone",
-      primaryLabel: "下一步",
+      primaryLabel: tr("下一步", "Next"),
       primaryAction: startVanillaGuide,
     },
   ];
 
   const step3: GuideItem[] = [
-    { title: "查看转换进度", desc: "这里会显示总进度与当前处理的文件。", anchorKey: "step3ProgressCard" },
+    { title: tr("查看转换进度", "Conversion Progress"), desc: tr("这里会显示总进度与当前处理的文件。", "Shows overall progress and the current file."), anchorKey: "step3ProgressCard" },
     {
-      title: "查看转换日志",
+      title: tr("查看转换日志", "Conversion Logs"),
       desc: processingError
-        ? "出现错误时可根据日志定位原因，并点击“返回修改”。"
-        : "点击“下一步”直接进入打包下载步骤（引导模式使用模拟数据）。",
+        ? tr("出现错误时可根据日志定位原因，并点击“返回修改”。", "Use logs to debug errors, then click “Back to Edit”.")
+        : tr("点击“下一步”直接进入打包下载步骤（引导模式使用模拟数据）。", "Click “Next” to continue to download (guide mode uses mock data)."),
       anchorKey: "step3LogCard",
-      primaryLabel: processingError ? "返回修改" : "下一步",
+      primaryLabel: processingError ? tr("返回修改", "Back to Edit") : tr("下一步", "Next"),
       primaryAction: processingError ? () => goToStep(2) : () => goToStep(4),
     },
   ];
 
   const step4: GuideItem[] = [
     {
-      title: "下载资源包",
-      desc: "点击下载 zip / mcpack 文件。",
+      title: tr("下载资源包", "Download Pack"),
+      desc: tr("点击下载 zip / mcpack 文件。", "Download as zip / mcpack."),
       anchorKey: "step4Download",
-      primaryLabel: "下载",
+      primaryLabel: tr("下载", "Download"),
       primaryAction: downloadPack,
     },
     {
-      title: "生成命令",
-      desc: "继续进入下一步，生成 /playsound 命令。",
+      title: tr("生成命令", "Generate Commands"),
+      desc: tr("继续进入下一步，生成 /playsound 命令。", "Continue to generate /playsound commands."),
       anchorKey: "step4Next",
-      primaryLabel: "前往生成命令",
+      primaryLabel: tr("前往生成命令", "Go to Commands"),
       primaryAction: () => goToStep(5),
     },
   ];
 
   const step5: GuideItem[] = [
-    { title: "下载命令 TXT", desc: "可导出命令列表，便于复制到游戏或备份。", anchorKey: "step5DownloadTxt" },
-    { title: "复制命令", desc: "每条命令右侧可一键复制。", anchorKey: undefined },
+    { title: tr("下载命令 TXT", "Download TXT"), desc: tr("可导出命令列表，便于复制到游戏或备份。", "Export commands for copying or backup."), anchorKey: "step5DownloadTxt" },
+    { title: tr("复制命令", "Copy Commands"), desc: tr("每条命令右侧可一键复制。", "Copy each command with one click."), anchorKey: undefined },
   ];
 
   if (step === 1) return step1;
@@ -962,6 +1068,7 @@ function FfmpegBlockingOverlay({
 }
 
 function DisclaimerOverlay({ onClose }: { onClose: () => void }) {
+  const { tr } = useLang();
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const lastActiveRef = useRef<HTMLElement | null>(null);
 
@@ -1029,18 +1136,18 @@ function DisclaimerOverlay({ onClose }: { onClose: () => void }) {
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="免责声明"
+        aria-label={tr("免责声明", "Disclaimer")}
         tabIndex={-1}
         className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-xl outline-none"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-base font-extrabold text-slate-800">免责声明</div>
-            <div className="mt-1 text-sm text-slate-500">关于文件与转换方式的说明</div>
+            <div className="text-base font-extrabold text-slate-800">{tr("免责声明", "Disclaimer")}</div>
+            <div className="mt-1 text-sm text-slate-500">{tr("关于文件与转换方式的说明", "About files and conversion")}</div>
           </div>
           <button
             type="button"
-            aria-label="关闭"
+            aria-label={tr("关闭", "Close")}
             onClick={onClose}
             className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
           >
@@ -1050,15 +1157,17 @@ function DisclaimerOverlay({ onClose }: { onClose: () => void }) {
 
         <div className="mt-4 space-y-3 text-sm text-slate-600">
           <p className="wrap-break-word">
-            这是一个在线 Minecraft 音频包生成器。音频格式转换在浏览器端使用 FFmpeg（WebAssembly）直接完成，
-            无需上传服务器。
+            {tr(
+              "这是一个在线 Minecraft 音频包生成器。音频格式转换在浏览器端使用 FFmpeg（WebAssembly）直接完成，无需上传服务器。",
+              "This is an online Minecraft sound pack generator. Audio conversion runs locally in your browser via FFmpeg (WebAssembly), without uploading to a server."
+            )}
           </p>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-700">
-            <div className="font-bold">要点</div>
+            <div className="font-bold">{tr("要点", "Key Points")}</div>
             <ul className="mt-2 list-disc space-y-1 pl-5">
-              <li>音频文件在本地处理，不会被上传到服务器。</li>
-              <li>首次加载会下载 FFmpeg 相关 wasm 资源，可能较慢。</li>
-              <li>转换效果与文件质量、浏览器环境有关。</li>
+              <li>{tr("音频文件在本地处理，不会被上传到服务器。", "Files are processed locally and are not uploaded.")}</li>
+              <li>{tr("首次加载会下载 FFmpeg 相关 wasm 资源，可能较慢。", "First run downloads FFmpeg wasm assets and may be slow.")}</li>
+              <li>{tr("转换效果与文件质量、浏览器环境有关。", "Results depend on source quality and browser environment.")}</li>
             </ul>
           </div>
         </div>
@@ -1069,6 +1178,7 @@ function DisclaimerOverlay({ onClose }: { onClose: () => void }) {
 }
 
 function UpdateLogsOverlay({ onClose }: { onClose: () => void }) {
+  const { tr } = useLang();
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const lastActiveRef = useRef<HTMLElement | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -1083,7 +1193,7 @@ function UpdateLogsOverlay({ onClose }: { onClose: () => void }) {
 
   const buildCollapsedText = (text: string) => {
     const normalized = text.replace(/\r\n/g, "\n").trim();
-    if (!normalized) return { text: "暂无内容", truncated: false };
+    if (!normalized) return { text: tr("暂无内容", "No content"), truncated: false };
 
     const lines = normalized.split("\n");
     const maxLines = 4;
@@ -1170,18 +1280,20 @@ function UpdateLogsOverlay({ onClose }: { onClose: () => void }) {
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="更新日志"
+        aria-label={tr("更新日志", "Changelog")}
         tabIndex={-1}
         className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-xl outline-none"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-base font-extrabold text-slate-800">更新日志</div>
-            <div className="mt-1 text-sm text-slate-500">当前版本：v{WebConfig.appVersion}</div>
+            <div className="text-base font-extrabold text-slate-800">{tr("更新日志", "Changelog")}</div>
+            <div className="mt-1 text-sm text-slate-500">
+              {tr("当前版本", "Current version")}：v{WebConfig.appVersion}
+            </div>
           </div>
           <button
             type="button"
-            aria-label="关闭"
+            aria-label={tr("关闭", "Close")}
             onClick={onClose}
             className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
           >
@@ -1195,7 +1307,7 @@ function UpdateLogsOverlay({ onClose }: { onClose: () => void }) {
             <div className="space-y-5">
               {entries.map(([version, item]) => {
                 const isCurrent = version === WebConfig.appVersion;
-                const rawLogsText = item.logs?.trim() ? item.logs.trim() : "暂无内容";
+                const rawLogsText = item.logs?.trim() ? item.logs.trim() : tr("暂无内容", "No content");
                 const isExpanded = expanded[version] === true;
                 const collapsed = buildCollapsedText(rawLogsText);
                 const logsText = isExpanded ? rawLogsText : collapsed.text;
@@ -1213,7 +1325,7 @@ function UpdateLogsOverlay({ onClose }: { onClose: () => void }) {
                           <div className="text-sm font-extrabold text-slate-800">v{version}</div>
                           {isCurrent ? (
                             <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-extrabold text-sky-700">
-                              当前
+                              {tr("当前", "Current")}
                             </span>
                           ) : null}
                         </div>
@@ -1231,7 +1343,7 @@ function UpdateLogsOverlay({ onClose }: { onClose: () => void }) {
                               }
                               className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-extrabold text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
                             >
-                              <span>{isExpanded ? "收起" : "展开"}</span>
+                              <span>{isExpanded ? tr("收起", "Collapse") : tr("展开", "Expand")}</span>
                               <ChevronDown className={["h-3.5 w-3.5 transition", isExpanded ? "rotate-180" : ""].join(" ")} />
                             </button>
                           ) : null}
@@ -1446,12 +1558,13 @@ function MobileStepBar({
   ffmpegMaxRetries: number;
   onOpenUpdateLogs: () => void;
 }) {
+  const { tr } = useLang();
   const steps: Array<{ index: Step; title: string }> = [
-    { index: 1, title: "基本信息" },
-    { index: 2, title: "导入音频" },
-    { index: 3, title: "格式转换" },
-    { index: 4, title: "打包下载" },
-    { index: 5, title: "生成命令" },
+    { index: 1, title: tr("基本信息", "Basics") },
+    { index: 2, title: tr("导入音频", "Import") },
+    { index: 3, title: tr("格式转换", "Convert") },
+    { index: 4, title: tr("打包下载", "Download") },
+    { index: 5, title: tr("生成命令", "Commands") },
   ];
 
   return (
@@ -1464,13 +1577,16 @@ function MobileStepBar({
             </div>
             <div className="min-w-0">
               <div className="text-sm font-extrabold text-slate-800 sm:text-base">MC SoundsGen</div>
-              <button
-                type="button"
-                onClick={onOpenUpdateLogs}
-                className="text-left text-[11px] font-bold text-slate-400 underline decoration-dotted underline-offset-2 transition hover:text-slate-600 sm:text-xs"
-              >
-                版本：v{WebConfig.appVersion}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onOpenUpdateLogs}
+                  className="text-left text-[11px] font-bold text-slate-400 underline decoration-dotted underline-offset-2 transition hover:text-slate-600 sm:text-xs"
+                >
+                  {tr("版本", "Version")}：v{WebConfig.appVersion}
+                </button>
+                <LanguageToggleCompact className="sm:hidden" />
+              </div>
             </div>
           </div>
 
@@ -1483,7 +1599,6 @@ function MobileStepBar({
             />
           </div>
         </div>
-
 
         <div className="px-3 pb-3 sm:px-4 sm:pb-4">
           <div className="flex gap-2 overflow-x-auto">
@@ -1528,6 +1643,9 @@ function MobileStepBar({
               );
             })}
           </div>
+          <div className="mt-3 hidden justify-end sm:flex">
+            <LanguageToggle />
+          </div>
         </div>
       </div>
     </div>
@@ -1549,6 +1667,7 @@ function Sidebar({
   ffmpegMaxRetries: number;
   onOpenUpdateLogs: () => void;
 }) {
+  const { tr } = useLang();
   return (
     <aside className="hidden w-64 shrink-0 flex-col space-y-8 lg:flex">
       <div className="space-y-3">
@@ -1583,43 +1702,77 @@ function Sidebar({
           index={1}
           active={step === 1}
           completed={step > 1}
-          title="基本信息"
-          desc="设置包名与版本"
+          title={tr("基本信息", "Basics")}
+          desc={tr("设置包名与版本", "Pack name & version")}
         />
         <StepIndicator
           index={2}
           active={step === 2}
           completed={step > 2}
-          title="导入音频"
-          desc="处理与重命名"
+          title={tr("导入音频", "Import")}
+          desc={tr("处理与重命名", "Manage & rename")}
         />
         <StepIndicator
           index={3}
           active={step === 3}
           completed={step > 3}
-          title="格式转换"
-          desc="转为 OGG 格式"
+          title={tr("格式转换", "Convert")}
+          desc={tr("转为 OGG 格式", "Convert to OGG")}
         />
         <StepIndicator
           index={4}
           active={step === 4}
           completed={step > 4}
-          title="打包下载"
-          desc="生成资源包"
+          title={tr("打包下载", "Download")}
+          desc={tr("生成资源包", "Build pack")}
         />
         <StepIndicator
           index={5}
           active={step === 5}
           completed={false}
-          title="生成命令"
-          desc="游戏内播放"
+          title={tr("生成命令", "Commands")}
+          desc={tr("游戏内播放", "Play in-game")}
         />
+      </div>
+      <div className="-mt-2 pl-2">
+        <LanguageToggle />
       </div>
     </aside>
   );
 }
 
 export default function AudioPackGenerator() {
+  const [lang, setLangState] = useState<Lang>("zh");
+  const tr = useCallback((zh: string, en: string) => (lang === "zh" ? zh : en), [lang]);
+  const setLang = useCallback((next: Lang) => {
+    setLangState(next);
+    try {
+      localStorage.setItem("mcsd_lang", next);
+    } catch {
+      void 0;
+    }
+  }, []);
+  const langContextValue = useMemo<LangContextValue>(() => ({ lang, setLang, tr }), [lang, setLang, tr]);
+
+  useEffect(() => {
+    let initial: Lang | null = null;
+    try {
+      const raw = localStorage.getItem("mcsd_lang");
+      if (raw === "zh" || raw === "en") initial = raw;
+    } catch {
+      initial = null;
+    }
+    if (!initial) {
+      const nav = typeof navigator !== "undefined" ? navigator.language : "";
+      initial = nav.toLowerCase().startsWith("zh") ? "zh" : "en";
+    }
+    setLangState(initial);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  }, [lang]);
+
   const [step, setStep] = useState<Step>(1);
   const [files, setFiles] = useState<FileItem[]>([]);
   const filesRef = useRef<FileItem[]>([]);
@@ -2079,6 +2232,7 @@ export default function AudioPackGenerator() {
       return;
     }
     const items = buildImmersiveGuideItems({
+      tr: trNoop,
       step,
       platform: meta.platform,
       guidePhase,
@@ -2155,6 +2309,7 @@ export default function AudioPackGenerator() {
     if (guideSecondRoundModifyVanillaOpenedRef.current) return;
 
     const items = buildImmersiveGuideItems({
+      tr: trNoop,
       step,
       platform: meta.platform,
       guidePhase: "vanilla",
@@ -2375,14 +2530,14 @@ export default function AudioPackGenerator() {
     if (!guideOpen) {
       if (target === 2) {
         if (!meta.name.trim()) {
-          alert("请输入音频包名称");
+          alert(tr("请输入音频包名称", "Please enter a pack name."));
           return;
         }
       }
 
       if (target === 3 && meta.modifyVanilla) {
         if (files.length === 0) {
-          alert("请先添加音频文件");
+          alert(tr("请先添加音频文件", "Please add audio files first."));
           return;
         }
       }
@@ -2622,7 +2777,7 @@ export default function AudioPackGenerator() {
 
     const readyFiles = files.filter((f) => f.processedBlob && f.status === "done");
     if (readyFiles.length !== files.length) {
-      alert("存在未成功转换的文件，请重新处理后再下载。");
+      alert(tr("存在未成功转换的文件，请重新处理后再下载。", "Some files failed to convert. Please reprocess before downloading."));
       return;
     }
 
@@ -2704,7 +2859,8 @@ export default function AudioPackGenerator() {
   };
 
   return (
-    <div className="h-dvh overflow-hidden bg-slate-50 text-slate-900">
+    <LangContext.Provider value={langContextValue}>
+      <div className="h-dvh overflow-hidden bg-slate-50 text-slate-900">
       {!ffmpegLoaded ? (
         <FfmpegBlockingOverlay
           stage={ffmpegGiveUp ? "failed" : "loading"}
@@ -2715,6 +2871,7 @@ export default function AudioPackGenerator() {
       {(() => {
         if (!guideOpen) return null;
         const guideItems = buildImmersiveGuideItems({
+          tr,
           step,
           platform: meta.platform,
           guidePhase,
@@ -2736,19 +2893,19 @@ export default function AudioPackGenerator() {
         const isLast = itemIndex + 1 >= itemTotal;
         const item =
           isLast && guidePhase === "main" && step < 3 && !rawItem.primaryAction
-            ? { ...rawItem, primaryLabel: rawItem.primaryLabel ?? "下一步" }
+            ? { ...rawItem, primaryLabel: rawItem.primaryLabel ?? tr("下一步", "Next") }
             : rawItem;
         const stepTitle =
           (
             {
-              1: "基本信息",
-              2: "导入音频",
-              3: "格式转换",
-              4: "打包下载",
-              5: "生成命令",
+              1: tr("基本信息", "Basics"),
+              2: tr("导入音频", "Import"),
+              3: tr("格式转换", "Convert"),
+              4: tr("打包下载", "Download"),
+              5: tr("生成命令", "Commands"),
             } as const
-          )[step] ?? "引导";
-        const guideTitle = guidePhase === "vanilla" ? "修改原版音频" : stepTitle;
+          )[step] ?? tr("引导", "Guide");
+        const guideTitle = guidePhase === "vanilla" ? tr("修改原版音频", "Replace Vanilla Sounds") : stepTitle;
 
         return (
           <ImmersiveGuideOverlay
@@ -2812,8 +2969,10 @@ export default function AudioPackGenerator() {
             {step === 1 ? (
               <div className="mx-auto max-w-xl">
                 <div className="mb-8 text-center">
-                  <h2 className="mb-2 text-2xl font-extrabold text-slate-800">创建新的音频包</h2>
-                  <p className="text-slate-500">填写资源包的基本元数据。</p>
+                  <h2 className="mb-2 text-2xl font-extrabold text-slate-800">
+                    {tr("创建新的音频包", "Create a New Sound Pack")}
+                  </h2>
+                  <p className="text-slate-500">{tr("填写资源包的基本元数据。", "Fill in the basic pack metadata.")}</p>
                 </div>
 
                 <div className="space-y-6">
@@ -2833,12 +2992,12 @@ export default function AudioPackGenerator() {
                       className="col-span-1 sm:col-span-2"
                     >
                       <label className="mb-2 block text-sm font-bold text-slate-600">
-                        音频包名称 <span className="text-red-400">*</span>
+                        {tr("音频包名称", "Pack Name")} <span className="text-red-400">*</span>
                       </label>
                       <div className="relative">
                         <input
                           className="w-full rounded-xl border-2 border-transparent bg-slate-50 px-4 py-3 pr-16 text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
-                          placeholder="例如：我的世界原声"
+                          placeholder={tr("例如：我的世界原声", "e.g. My Minecraft OST")}
                           maxLength={NAME_MAX_LENGTH}
                           value={meta.name}
                           onChange={(e) =>
@@ -2859,12 +3018,12 @@ export default function AudioPackGenerator() {
                       className="col-span-1 sm:col-span-2"
                     >
                       <label className="mb-2 block text-sm font-bold text-slate-600">
-                        主 Key (文件夹名) <span className="text-red-400">*</span>
+                        {tr("主 Key (文件夹名)", "Main Key (Folder)")} <span className="text-red-400">*</span>
                       </label>
                       <div className="relative">
                         <input
                           className="w-full rounded-xl border-2 border-transparent bg-slate-50 px-4 py-3 pr-24 font-mono text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
-                          placeholder="例如：mcsd"
+                          placeholder={tr("例如：mcsd", "e.g. mcsd")}
                           maxLength={5}
                           value={meta.key}
                           onChange={(e) =>
@@ -2875,11 +3034,11 @@ export default function AudioPackGenerator() {
                           }
                         />
                         <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-bold text-slate-400">
-                          不可中文
+                          {tr("不可中文", "ASCII Only")}
                         </div>
                       </div>
                       <p className="ml-1 mt-1.5 text-xs text-slate-400">
-                        生成的路径: assets/minecraft/sounds/
+                        {tr("生成的路径", "Output path")}: assets/minecraft/sounds/
                         <span className="font-bold text-sky-500">{meta.key || DEFAULT_KEY}</span>/...
                       </p>
                     </div>
@@ -2890,7 +3049,7 @@ export default function AudioPackGenerator() {
                       }}
                     >
                       <label className="mb-2 block text-sm font-bold text-slate-600">
-                        游戏版本 <span className="text-red-400">*</span>
+                        {tr("游戏版本", "Edition")} <span className="text-red-400">*</span>
                       </label>
                       <div className="relative">
                         <select
@@ -2903,8 +3062,8 @@ export default function AudioPackGenerator() {
                             }))
                           }
                         >
-                          <option value="java">Java 版</option>
-                          <option value="bedrock">基岩版 (Bedrock)</option>
+                          <option value="java">{tr("Java 版", "Java Edition")}</option>
+                          <option value="bedrock">{tr("基岩版 (Bedrock)", "Bedrock Edition")}</option>
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       </div>
@@ -2918,7 +3077,7 @@ export default function AudioPackGenerator() {
                       {meta.platform === "java" ? (
                         <>
                           <label className="mb-2 block text-sm font-bold text-slate-600">
-                            资源包版本 <span className="text-red-400">*</span>
+                            {tr("资源包版本", "Pack Format")} <span className="text-red-400">*</span>
                           </label>
                           <div className="relative">
                             <select
@@ -2935,7 +3094,10 @@ export default function AudioPackGenerator() {
                             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                           </div>
                           <p className="ml-1 mt-1.5 text-xs text-slate-400">
-                            选择版本不对不会影响使用，但如果版本不匹配，在新版本游戏里会有[不兼容]的提示
+                            {tr(
+                              "选择版本不对不会影响使用，但如果版本不匹配，在新版本游戏里会有[不兼容]的提示",
+                              "Choosing the wrong format usually still works, but newer versions may show “incompatible”."
+                            )}
                           </p>
                         </>
                       ) : null}
@@ -2949,11 +3111,13 @@ export default function AudioPackGenerator() {
                     >
                       <div className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 p-4">
                         <div>
-                          <div className="text-sm font-bold text-slate-700">修改原版音频?</div>
+                          <div className="text-sm font-bold text-slate-700">
+                            {tr("修改原版音频?", "Replace Vanilla Sounds?")}
+                          </div>
                           <div className="text-xs text-slate-400">
                             {meta.platform === "bedrock"
-                              ? "开启后可替换基岩版原版声音事件。"
-                              : "开启后可替换原版声音事件，如受伤、走路等。"}
+                              ? tr("开启后可替换基岩版原版声音事件。", "Enable to map Bedrock vanilla sound events.")
+                              : tr("开启后可替换原版声音事件，如受伤、走路等。", "Enable to map vanilla events (hurt, walking, etc.).")}
                           </div>
                         </div>
 
@@ -2978,11 +3142,13 @@ export default function AudioPackGenerator() {
                       }}
                       className="col-span-1 sm:col-span-2"
                     >
-                      <label className="mb-2 block text-sm font-bold text-slate-600">简介 (可选)</label>
+                      <label className="mb-2 block text-sm font-bold text-slate-600">
+                        {tr("简介 (可选)", "Description (Optional)")}
+                      </label>
                       <div className="relative">
                         <input
                           className="w-full rounded-xl border-2 border-transparent bg-slate-50 px-4 py-3 pr-16 text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
-                          placeholder="简短描述..."
+                          placeholder={tr("简短描述...", "Short description...")}
                           maxLength={descInputMaxLength}
                           value={meta.desc}
                           onChange={(e) => {
@@ -3006,7 +3172,7 @@ export default function AudioPackGenerator() {
                       onClick={() => goToStep(2)}
                       className="inline-flex w-full items-center justify-center rounded-xl bg-sky-400 px-6 py-3 font-bold text-white shadow-[0_4px_14px_0_rgba(56,189,248,0.35)] transition hover:-translate-y-0.5 hover:bg-sky-300 md:w-auto"
                     >
-                      下一步 <ArrowRight className="ml-2 h-4 w-4" />
+                      {tr("下一步", "Next")} <ArrowRight className="ml-2 h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -3017,9 +3183,11 @@ export default function AudioPackGenerator() {
               <div className="flex h-full flex-col">
                 <div className="mb-6 flex shrink-0 flex-row gap-4 sm:flex-row sm:items-center sm:justify-between items-center justify-center">
                   <div>
-                    <h2 className="text-2xl font-extrabold text-slate-800">添加音频文件</h2>
+                    <h2 className="text-2xl font-extrabold text-slate-800">{tr("添加音频文件", "Add Audio Files")}</h2>
                     <p className="text-sm text-slate-500">
-                      {meta.modifyVanilla ? "选择要替换的原版声音事件。" : "拖入文件，系统将自动重命名。"}
+                      {meta.modifyVanilla
+                        ? tr("选择要替换的原版声音事件。", "Choose the vanilla sound event to replace.")
+                        : tr("拖入文件，系统将自动重命名。", "Drop files here and rename them as needed.")}
                     </p>
                   </div>
 
@@ -3031,7 +3199,7 @@ export default function AudioPackGenerator() {
                       className="inline-flex cursor-pointer items-center rounded-xl bg-sky-400 px-4 py-2 text-sm font-bold text-white shadow-[0_4px_14px_0_rgba(56,189,248,0.35)] transition hover:bg-sky-300"
                     >
                       <Plus className="mr-2 h-4 w-4" />
-                      添加文件
+                      {tr("添加文件", "Add Files")}
                       <input
                         type="file"
                         multiple
@@ -3069,7 +3237,8 @@ export default function AudioPackGenerator() {
 
                 <div className="mt-4 flex shrink-0 flex-col gap-4 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-sm font-bold text-slate-500">
-                    已添加 <span className="text-sky-500">{fileCount}</span> 个文件
+                    {tr("已添加", "Added")} <span className="text-sky-500">{fileCount}</span>{" "}
+                    {tr("个文件", "files")}
                   </span>
                   <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
                     <button
@@ -3077,7 +3246,7 @@ export default function AudioPackGenerator() {
                       onClick={() => goToStep(1)}
                       className="inline-flex w-full items-center justify-center rounded-xl px-4 py-2 text-sm font-bold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 sm:w-auto"
                     >
-                      上一步
+                      {tr("上一步", "Back")}
                     </button>
                     <button
                       ref={(el) => {
@@ -3090,7 +3259,7 @@ export default function AudioPackGenerator() {
                         "inline-flex w-full items-center justify-center rounded-xl bg-sky-400 px-6 py-3 font-bold text-white shadow-[0_4px_14px_0_rgba(56,189,248,0.35)] transition hover:-translate-y-0.5 hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:hover:translate-y-0 sm:w-auto",
                       ].join(" ")}
                     >
-                      开始处理 <Play className="ml-2 h-4 w-4" />
+                      {tr("开始处理", "Process")} <Play className="ml-2 h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -3120,9 +3289,12 @@ export default function AudioPackGenerator() {
                   <div className="border-b border-slate-100 px-3 py-3 sm:px-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                       <div>
-                        <div className="text-sm font-extrabold text-slate-800">格式转换进度</div>
+                        <div className="text-sm font-extrabold text-slate-800">
+                          {tr("格式转换进度", "Conversion Progress")}
+                        </div>
                         <div className="text-[11px] font-bold text-slate-400 sm:text-xs">
-                          总进度 {processing.percent}% · 已完成 {viewFinishedAudioCount}/{viewFileCount}
+                          {tr("总进度", "Total")} {processing.percent}% · {tr("已完成", "Done")}{" "}
+                          {viewFinishedAudioCount}/{viewFileCount}
                         </div>
                       </div>
                       <div className="wrap-break-word max-w-full rounded bg-slate-50 px-3 py-1 font-mono text-[11px] text-slate-400 sm:text-xs">
@@ -3144,7 +3316,7 @@ export default function AudioPackGenerator() {
                           onClick={() => goToStep(2)}
                           className="inline-flex items-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800"
                         >
-                          返回修改
+                          {tr("返回修改", "Back to Edit")}
                         </button>
                       </div>
                     ) : null}
@@ -3236,7 +3408,7 @@ export default function AudioPackGenerator() {
                             className={line.level === "error" ? "text-red-600" : "text-slate-600"}
                           >
                             <span className="text-slate-400">
-                              {new Date(line.at).toLocaleTimeString("zh-CN", { hour12: false })}
+                              {new Date(line.at).toLocaleTimeString(lang === "zh" ? "zh-CN" : "en-US", { hour12: false })}
                             </span>
                             <span className="px-2 text-slate-300">|</span>
                             <span className="wrap-break-word">{line.message}</span>
@@ -3245,7 +3417,7 @@ export default function AudioPackGenerator() {
                         <div ref={logsEndRef} />
                       </div>
                     ) : (
-                      <div className="text-slate-400">暂无日志</div>
+                      <div className="text-slate-400">{tr("暂无日志", "No logs yet")}</div>
                     )}
                   </div>
                 </div>
@@ -3261,15 +3433,18 @@ export default function AudioPackGenerator() {
                   <Check className="h-12 w-12" />
                 </div>
 
-                <h2 className="mb-4 text-3xl font-extrabold text-slate-800">打包完成！</h2>
+                <h2 className="mb-4 text-3xl font-extrabold text-slate-800">{tr("打包完成！", "Pack Ready!")}</h2>
                 <p className="mb-8 max-w-md text-slate-500">
-                  您的 Minecraft 音频资源包已准备就绪。所有文件已标准化，并生成了配置文件。
+                  {tr(
+                    "您的 Minecraft 音频资源包已准备就绪。所有文件已标准化，并生成了配置文件。",
+                    "Your Minecraft sound pack is ready. Files are normalized and config files are generated."
+                  )}
                 </p>
 
                 <div className="mb-8 w-full max-w-sm rounded-2xl border border-slate-200 bg-slate-50 p-6 text-left">
                   <h4 className="mb-3 flex items-center gap-2 font-bold text-slate-700">
                     <Package className="h-4 w-4 text-sky-500" />
-                    包内容预览
+                    {tr("包内容预览", "Pack Contents")}
                   </h4>
                   <ul className="space-y-2 font-mono text-sm text-slate-500">
                     {buildPackPreview().map((item) => (
@@ -3290,7 +3465,7 @@ export default function AudioPackGenerator() {
                   className="inline-flex w-full max-w-sm items-center justify-center rounded-xl bg-sky-400 px-6 py-3 text-base font-bold text-white shadow-xl shadow-sky-200 transition hover:-translate-y-0.5 hover:bg-sky-300 sm:w-auto sm:px-8 sm:py-4 sm:text-lg"
                 >
                   <Download className="mr-2 h-5 w-5" />
-                  下载资源包 (.{meta.platform === "bedrock" ? "mcpack" : "zip"})
+                  {tr("下载资源包", "Download Pack")} (.{meta.platform === "bedrock" ? "mcpack" : "zip"})
                 </button>
 
                 <button
@@ -3301,7 +3476,7 @@ export default function AudioPackGenerator() {
                   onClick={() => goToStep(5)}
                   className="mt-4 inline-flex items-center rounded-xl bg-slate-900 px-6 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
                 >
-                  下一步：生成命令 <ArrowRight className="ml-2 h-4 w-4" />
+                  {tr("下一步：生成命令", "Next: Commands")} <ArrowRight className="ml-2 h-4 w-4" />
                 </button>
 
                 <button
@@ -3309,7 +3484,7 @@ export default function AudioPackGenerator() {
                   onClick={resetAll}
                   className="mt-6 text-sm font-bold text-slate-400 transition hover:text-slate-600"
                 >
-                  创建新的资源包
+                  {tr("创建新的资源包", "Create Another Pack")}
                 </button>
               </div>
             ) : null}
@@ -3320,10 +3495,10 @@ export default function AudioPackGenerator() {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h2 className="mb-1 text-xl font-extrabold text-slate-800 sm:text-2xl md:mb-2 md:text-3xl">
-                        生成命令
+                        {tr("生成命令", "Commands")}
                       </h2>
                       <p className="text-[11px] text-slate-500 sm:text-xs md:text-sm">
-                        在游戏内使用 /playsound 播放资源包里的声音。
+                        {tr("在游戏内使用 /playsound 播放资源包里的声音。", "Use /playsound in-game to play sounds from the pack.")}
                       </p>
                     </div>
                     <button
@@ -3335,7 +3510,7 @@ export default function AudioPackGenerator() {
                       className="inline-flex items-center rounded-xl bg-slate-900 px-2.5 py-2 text-[11px] font-bold text-white transition hover:bg-slate-800 sm:px-3 sm:text-xs md:px-4 md:text-sm"
                     >
                       <Download className="mr-2 h-4 w-4" />
-                      下载 TXT
+                      {tr("下载 TXT", "Download TXT")}
                     </button>
                   </div>
                 </div>
@@ -3359,7 +3534,7 @@ export default function AudioPackGenerator() {
                       if (lines.length === 0) {
                         return (
                           <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
-                            暂无音频文件
+                            {tr("暂无音频文件", "No audio files")}
                           </div>
                         );
                       }
@@ -3450,7 +3625,8 @@ export default function AudioPackGenerator() {
           ))}
         </datalist>
       ) : null}
-    </div>
+      </div>
+    </LangContext.Provider>
   );
 }
 
@@ -3479,6 +3655,7 @@ function FileDropZone({
   vanillaEventLoading: boolean;
   vanillaEventLoadFailed: boolean;
 }) {
+  const { tr } = useLang();
   const [dragOver, setDragOver] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
@@ -3585,13 +3762,20 @@ function FileDropZone({
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-sky-50 text-sky-500">
               <UploadCloud className="h-8 w-8" />
             </div>
-            <h3 className="font-bold text-slate-700">拖放音频文件到这里</h3>
-            <p className="mt-1 text-sm text-slate-400">支持 MP3, WAV, OGG 等音频格式</p>
+            <h3 className="font-bold text-slate-700">{tr("拖放音频文件到这里", "Drop audio files here")}</h3>
+            <p className="mt-1 text-sm text-slate-400">{tr("支持 MP3, WAV, OGG 等音频格式", "Supports MP3, WAV, OGG, etc.")}</p>
             <div className="mt-4 w-full max-w-md rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-left">
-              <div className="text-[11px] font-extrabold text-slate-500">文件大小提示</div>
+              <div className="text-[11px] font-extrabold text-slate-500">{tr("文件大小提示", "File Size Tips")}</div>
               <ul className="mt-1 list-disc space-y-1 pl-5 text-[11px] font-bold leading-relaxed text-slate-400">
-                <li>单个文件建议 ≤ 100MB（不同浏览器内存策略不同，过大可能卡死）</li>
-                <li>单个文件超过 {formatBytes(FFMPEG_WASM_MAX_INPUT_BYTES)} 将被跳过</li>
+                <li>
+                  {tr(
+                    "单个文件建议 ≤ 100MB（不同浏览器内存策略不同，过大可能卡死）",
+                    "Recommended ≤ 100MB per file (very large files may freeze the browser)."
+                  )}
+                </li>
+                <li>
+                  {tr("单个文件超过", "Files over")} {formatBytes(FFMPEG_WASM_MAX_INPUT_BYTES)} {tr("将被跳过", "will be skipped")}
+                </li>
               </ul>
             </div>
           </div>
