@@ -24,6 +24,7 @@ import {
 import NextImage from "next/image";
 import { pinyin } from "pinyin-pro";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -138,8 +139,7 @@ function buildPackDescription(desc: string) {
 function buildImmersiveGuideItems({
   step,
   platform,
-  guideRound,
-  modifyVanilla,
+  guidePhase,
   processingError,
   goToStep,
   startProcessing,
@@ -149,8 +149,7 @@ function buildImmersiveGuideItems({
 }: {
   step: Step;
   platform: PackPlatform;
-  guideRound: 1 | 2;
-  modifyVanilla: boolean;
+  guidePhase: "main" | "vanilla";
   processingError: string | null;
   goToStep: (target: Step) => void;
   startProcessing: () => void;
@@ -158,7 +157,7 @@ function buildImmersiveGuideItems({
   enableModifyVanilla: () => void;
   startVanillaGuide: () => void;
 }): GuideItem[] {
-  if (guideRound === 2) {
+  if (guidePhase === "vanilla") {
     const step1: GuideItem[] = [
       {
         title: "打开“修改原版音频”",
@@ -167,7 +166,7 @@ function buildImmersiveGuideItems({
       },
       {
         title: "继续下一步",
-        desc: "点击“下一步”进入导入音频，并继续第二遍引导。",
+        desc: "点击“下一步”返回导入音频，继续完成替换原版事件与开始处理。",
         anchorKey: "step1Next",
         primaryLabel: "下一步",
         primaryAction: () => {
@@ -215,11 +214,6 @@ function buildImmersiveGuideItems({
           } as const,
         ]
       : []),
-    {
-      title: "是否修改原版音频",
-      desc: "开启后可替换原版事件；导入音频时需要为每个文件选择事件。",
-      anchorKey: "step1ModifyVanilla",
-    },
     { title: "填写简介（可选）", desc: "会自动追加 By mcsd。", anchorKey: "step1Desc" },
     {
       title: "进入下一步",
@@ -232,20 +226,10 @@ function buildImmersiveGuideItems({
 
   const step2: GuideItem[] = [
     { title: "添加音频文件", desc: "点击“添加文件”，或直接把文件拖入页面。", anchorKey: "step2AddFiles" },
-    { title: "拖拽区与重命名", desc: "可在列表里重命名；移动端会弹窗编辑。", anchorKey: "step2DropZone" },
-    ...(modifyVanilla
-      ? [
-          {
-            title: "选择要替换的原版事件",
-            desc: "为每个文件选择 minecraft:... 原版声音事件；留空则不替换。",
-            anchorKey: "step2VanillaEvent",
-          } as const,
-        ]
-      : []),
     {
-      title: "可选：替换原版事件",
-      desc: "如果想替换原版声音事件，下一步会进入该部分引导，然后无缝进入第三步。",
-      anchorKey: "step2StartProcessing",
+      title: "拖拽区与重命名",
+      desc: "可在列表里重命名；移动端会弹窗编辑。点击“下一步”进入“修改原版音频”。",
+      anchorKey: "step2DropZone",
       primaryLabel: "下一步",
       primaryAction: startVanillaGuide,
     },
@@ -255,8 +239,12 @@ function buildImmersiveGuideItems({
     { title: "查看转换进度", desc: "这里会显示总进度与当前处理的文件。", anchorKey: "step3ProgressCard" },
     {
       title: "查看转换日志",
-      desc: processingError ? "出现错误时可根据日志定位原因，并点击“返回修改”。" : "可查看最近的转换记录与错误信息。",
+      desc: processingError
+        ? "出现错误时可根据日志定位原因，并点击“返回修改”。"
+        : "点击“下一步”直接进入打包下载步骤（引导模式使用模拟数据）。",
       anchorKey: "step3LogCard",
+      primaryLabel: processingError ? "返回修改" : "下一步",
+      primaryAction: processingError ? () => goToStep(2) : () => goToStep(4),
     },
   ];
 
@@ -1255,7 +1243,7 @@ function ImmersiveGuideOverlay({
               onClick={onNext}
               className="inline-flex items-center rounded-xl bg-sky-400 px-4 py-2 text-sm font-bold text-white shadow-[0_4px_14px_0_rgba(56,189,248,0.35)] transition hover:bg-sky-300"
             >
-              {itemIndex + 1 >= itemTotal ? item.primaryLabel ?? (item.primaryAction ? "继续" : "结束引导") : "下一个"}
+              {itemIndex + 1 >= itemTotal ? item.primaryLabel ?? (item.primaryAction ? "继续" : "学会了") : "下一个"}
             </button>
           </div>
         </div>
@@ -1485,7 +1473,7 @@ export default function AudioPackGenerator() {
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
-  const [guideRound, setGuideRound] = useState<1 | 2>(1);
+  const [guidePhase, setGuidePhase] = useState<"main" | "vanilla">("main");
   const [guideIndex, setGuideIndex] = useState(0);
   const [guideAnchorRect, setGuideAnchorRect] = useState<{
     top: number;
@@ -1517,6 +1505,7 @@ export default function AudioPackGenerator() {
     sample: Pick<PackMeta, "name" | "key" | "desc">;
   } | null>(null);
   const guideSecondRoundModifyVanillaOpenedRef = useRef(false);
+  const guideDemoFilesRef = useRef<FileItem[] | null>(null);
 
   const nameCount = meta.name.length;
   const descLimit = getDescLimit(meta.platform);
@@ -1526,12 +1515,70 @@ export default function AudioPackGenerator() {
 
   const fileCount = files.length;
   const canStartProcess = fileCount > 0;
-  const finishedAudioCount = files.reduce((sum, f) => {
-    const stage = audioProgress[f.id]?.stage;
-    if (stage === "done" || stage === "skipped") return sum + 1;
-    if (!stage && f.status === "done") return sum + 1;
-    return sum;
-  }, 0);
+
+  const getGuideDemoFiles = useCallback((): FileItem[] => {
+    if (guideDemoFilesRef.current) return guideDemoFilesRef.current;
+
+    const create = ({
+      id,
+      originalName,
+      newName,
+      vanillaEvent,
+      status,
+    }: {
+      id: string;
+      originalName: string;
+      newName: string;
+      vanillaEvent: string;
+      status: FileItem["status"];
+    }): FileItem => ({
+      id,
+      originalFile: new File([new Uint8Array()], originalName, { type: "audio/mpeg" }),
+      originalName,
+      hash: id,
+      newName,
+      status,
+      vanillaEvent,
+      processedBlob: new Blob(),
+    });
+
+    guideDemoFilesRef.current = [
+      create({
+        id: "guide-demo-bell",
+        originalName: "bell.mp3",
+        newName: "bell",
+        vanillaEvent: "minecraft:block.note_block.harp",
+        status: "done",
+      }),
+      create({
+        id: "guide-demo-click",
+        originalName: "click.wav",
+        newName: "click",
+        vanillaEvent: "",
+        status: "done",
+      }),
+      create({
+        id: "guide-demo-boom",
+        originalName: "boom.ogg",
+        newName: "boom",
+        vanillaEvent: "",
+        status: "done",
+      }),
+    ];
+
+    return guideDemoFilesRef.current;
+  }, []);
+
+  const buildCommandSoundNames = (sourceFiles: FileItem[]) => {
+    const key = normalizeKey(meta.key);
+    return sourceFiles.map((f) => {
+      if (meta.modifyVanilla) {
+        const event = f.vanillaEvent.trim();
+        return event || `${key}.${f.newName}`;
+      }
+      return `${key}.${f.newName}`;
+    });
+  };
 
   const pushConvertLog = (message: string, level: ConvertLogItem["level"] = "info") => {
     setConvertLogs((prev) => {
@@ -1551,6 +1598,37 @@ export default function AudioPackGenerator() {
     if (step !== 3) return;
     logsEndRef.current?.scrollIntoView({ block: "end" });
   }, [step, convertLogs.length]);
+
+  useEffect(() => {
+    if (!guideOpen) return;
+    if (step !== 3) return;
+    if (files.length > 0) return;
+
+    const demoFiles = getGuideDemoFiles();
+    const now = Date.now();
+
+    setProcessing({
+      title: "转换完成（演示）",
+      desc: "引导模式会展示模拟的进度与日志，不会真的进行转码。",
+      currentFile: "Done",
+      percent: 100,
+      error: null,
+    });
+
+    setAudioProgress({
+      [demoFiles[0]!.id]: { stage: "skipped", percent: 100 },
+      [demoFiles[1]!.id]: { stage: "done", percent: 100 },
+      [demoFiles[2]!.id]: { stage: "done", percent: 100 },
+    });
+
+    setConvertLogs([
+      { id: "guide-log-1", at: now - 6200, level: "info", message: "开始处理：共 3 个文件（演示）" },
+      { id: "guide-log-2", at: now - 5200, level: "info", message: "检查 OGG 格式：boom.ogg 已符合规格，跳过转码" },
+      { id: "guide-log-3", at: now - 3800, level: "info", message: "转码：bell.mp3 -> bell.ogg" },
+      { id: "guide-log-4", at: now - 2400, level: "info", message: "转码：click.wav -> click.ogg" },
+      { id: "guide-log-5", at: now - 900, level: "info", message: "处理完成：已生成可打包的 OGG 文件（演示）" },
+    ]);
+  }, [files.length, getGuideDemoFiles, guideOpen, step]);
 
   useEffect(() => {
     if (!ffmpegLoaded) return;
@@ -1594,13 +1672,8 @@ export default function AudioPackGenerator() {
   const downloadCommandsTxt = () => {
     const safeName = meta.name.trim() || "SoundPack";
     const key = normalizeKey(meta.key);
-    const soundNames = files.map((f) => {
-      if (meta.modifyVanilla) {
-        const event = f.vanillaEvent.trim();
-        return event || `${key}.${f.newName}`;
-      }
-      return `${key}.${f.newName}`;
-    });
+    const sourceFiles = guideOpen && files.length === 0 ? getGuideDemoFiles() : files;
+    const soundNames = buildCommandSoundNames(sourceFiles);
 
     const linesOldJava = soundNames.map((s) => `/playsound ${s} @a ~ ~ ~ 10000`);
     const linesNewJava = soundNames.map((s) => `/playsound ${s} record @a ~ ~ ~ 10000`);
@@ -1655,9 +1728,9 @@ export default function AudioPackGenerator() {
   }, [meta.modifyVanilla, meta.platform, step, vanillaEventLoadFailed, vanillaEventLoading, vanillaEventOptions.length]);
 
   useEffect(() => {
-    if (meta.modifyVanilla && (files.length > 0 || (guideOpen && guideRound === 2 && step === 2))) return;
+    if (meta.modifyVanilla && (files.length > 0 || (guideOpen && guidePhase === "vanilla" && step === 2))) return;
     guideAnchorsRef.current.step2VanillaEvent = null;
-  }, [files.length, guideOpen, guideRound, meta.modifyVanilla, step]);
+  }, [files.length, guideOpen, guidePhase, meta.modifyVanilla, step]);
 
   useEffect(() => {
     if (!meta.iconFile) {
@@ -1756,7 +1829,7 @@ export default function AudioPackGenerator() {
     }
     if (acked) return;
     setGuideOpen(true);
-    setGuideRound(1);
+    setGuidePhase("main");
     setGuideIndex(0);
   }, [ffmpegLoaded]);
 
@@ -1811,12 +1884,10 @@ export default function AudioPackGenerator() {
       setGuideAnchorRect(null);
       return;
     }
-    const guideModifyVanilla = guideRound === 2;
     const items = buildImmersiveGuideItems({
       step,
       platform: meta.platform,
-      guideRound,
-      modifyVanilla: guideModifyVanilla,
+      guidePhase,
       processingError: processing.error,
       goToStep: noopGoToStep,
       startProcessing: noop,
@@ -1877,11 +1948,11 @@ export default function AudioPackGenerator() {
       if (raf) cancelAnimationFrame(raf);
       ro?.disconnect();
     };
-  }, [guideIndex, guideOpen, guideRound, meta.platform, processing.error, step]);
+  }, [guideIndex, guideOpen, guidePhase, meta.platform, processing.error, step]);
 
   useEffect(() => {
     if (!guideOpen) return;
-    if (guideRound !== 2) return;
+    if (guidePhase !== "vanilla") return;
     if (step !== 1) return;
     if (meta.modifyVanilla) {
       guideSecondRoundModifyVanillaOpenedRef.current = true;
@@ -1892,8 +1963,7 @@ export default function AudioPackGenerator() {
     const items = buildImmersiveGuideItems({
       step,
       platform: meta.platform,
-      guideRound,
-      modifyVanilla: true,
+      guidePhase: "vanilla",
       processingError: processing.error,
       goToStep: noopGoToStep,
       startProcessing: noop,
@@ -1918,7 +1988,7 @@ export default function AudioPackGenerator() {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [guideIndex, guideOpen, guideRound, meta.modifyVanilla, meta.platform, processing.error, step]);
+  }, [guideIndex, guideOpen, guidePhase, meta.modifyVanilla, meta.platform, processing.error, step]);
 
   useEffect(() => {
     if (step < 2) return;
@@ -1955,32 +2025,9 @@ export default function AudioPackGenerator() {
     setAudioProgress({});
   };
 
-  const startGuideSecondRound = () => {
-    guideAnchorsRef.current.step2VanillaEvent = null;
-    guideSecondRoundModifyVanillaOpenedRef.current = false;
-    setGuideRound(2);
-    setGuideIndex(0);
-    setGuideAnchorRect(null);
-    setStep(1);
-    setFiles([]);
-    setConvertLogs([]);
-    setAudioProgress({});
-    setProcessing({
-      title: "正在准备转换器...",
-      desc: "首次使用会下载转换组件，请耐心等待。",
-      currentFile: "Waiting to start...",
-      percent: 0,
-      error: null,
-    });
-    setMeta((prev) => ({
-      ...prev,
-      modifyVanilla: false,
-    }));
-  };
-
   const startVanillaGuide = () => {
     guideSecondRoundModifyVanillaOpenedRef.current = false;
-    setGuideRound(2);
+    setGuidePhase("vanilla");
     setGuideIndex(0);
     setGuideAnchorRect(null);
     setStep(1);
@@ -2473,16 +2520,14 @@ export default function AudioPackGenerator() {
       ) : null}
       {(() => {
         if (!guideOpen) return null;
-        const guideModifyVanilla = guideRound === 2;
         const guideItems = buildImmersiveGuideItems({
           step,
           platform: meta.platform,
-          guideRound,
-          modifyVanilla: guideModifyVanilla,
+          guidePhase,
           processingError: processing.error,
           goToStep,
           startProcessing: () => {
-            if (guideRound === 2) setGuideRound(1);
+            if (guidePhase === "vanilla") setGuidePhase("main");
             void startProcessing();
           },
           downloadPack: () => void downloadPack(),
@@ -2496,7 +2541,7 @@ export default function AudioPackGenerator() {
         const rawItem = guideItems[itemIndex];
         const isLast = itemIndex + 1 >= itemTotal;
         const item =
-          isLast && guideRound === 1 && step < 3 && !rawItem.primaryAction
+          isLast && guidePhase === "main" && step < 3 && !rawItem.primaryAction
             ? { ...rawItem, primaryLabel: rawItem.primaryLabel ?? "下一步" }
             : rawItem;
         const stepTitle =
@@ -2509,11 +2554,12 @@ export default function AudioPackGenerator() {
               5: "生成命令",
             } as const
           )[step] ?? "引导";
+        const guideTitle = guidePhase === "vanilla" ? "修改原版音频" : stepTitle;
 
         return (
           <ImmersiveGuideOverlay
             step={step}
-            stepTitle={`${stepTitle}（第 ${guideRound} 遍）`}
+            stepTitle={guideTitle}
             itemIndex={itemIndex}
             itemTotal={itemTotal}
             item={item}
@@ -2528,15 +2574,9 @@ export default function AudioPackGenerator() {
                 item.primaryAction();
                 return;
               }
-              if (guideRound === 1) {
-                if (step >= 3) {
-                  finishGuide();
-                  return;
-                }
-                startGuideSecondRound();
-                return;
+              if (guidePhase === "main" && step === 5) {
+                finishGuide();
               }
-              finishGuide();
             }}
             onSkip={finishGuide}
           />
@@ -2782,7 +2822,7 @@ export default function AudioPackGenerator() {
                   <div>
                     <h2 className="text-2xl font-extrabold text-slate-800">添加音频文件</h2>
                     <p className="text-sm text-slate-500">
-                      {meta.modifyVanilla ? "为上传的文件选择要替换的原版声音事件。" : "拖入文件，系统将自动重命名。"}
+                      {meta.modifyVanilla ? "选择要替换的原版声音事件。" : "拖入文件，系统将自动重命名。"}
                     </p>
                   </div>
 
@@ -2862,6 +2902,18 @@ export default function AudioPackGenerator() {
 
             {step === 3 ? (
               <div className="mx-auto flex h-full min-h-0 max-w-5xl flex-col gap-4 overflow-hidden">
+                {(() => {
+                  const viewFiles = guideOpen && files.length === 0 ? getGuideDemoFiles() : files;
+                  const viewFileCount = viewFiles.length;
+                  const viewFinishedAudioCount = viewFiles.reduce((sum, f) => {
+                    const stage = audioProgress[f.id]?.stage;
+                    if (stage === "done" || stage === "skipped") return sum + 1;
+                    if (!stage && f.status === "done") return sum + 1;
+                    return sum;
+                  }, 0);
+
+                  return (
+                    <>
                 <div
                   ref={(el) => {
                     guideAnchorsRef.current.step3ProgressCard = el;
@@ -2873,7 +2925,7 @@ export default function AudioPackGenerator() {
                       <div>
                         <div className="text-sm font-extrabold text-slate-800">格式转换进度</div>
                         <div className="text-[11px] font-bold text-slate-400 sm:text-xs">
-                          总进度 {processing.percent}% · 已完成 {finishedAudioCount}/{fileCount}
+                          总进度 {processing.percent}% · 已完成 {viewFinishedAudioCount}/{viewFileCount}
                         </div>
                       </div>
                       <div className="wrap-break-word max-w-full rounded bg-slate-50 px-3 py-1 font-mono text-[11px] text-slate-400 sm:text-xs">
@@ -2902,9 +2954,9 @@ export default function AudioPackGenerator() {
                   </div>
 
                   <div className="max-h-56 overflow-y-auto sm:max-h-80">
-                    {files.length ? (
+                    {viewFiles.length ? (
                       <div className="divide-y divide-slate-100">
-                        {files.map((f) => {
+                        {viewFiles.map((f) => {
                           const stage = audioProgress[f.id]?.stage;
                           const percent = audioProgress[f.id]?.percent ?? 0;
                           const viewStage =
@@ -3000,6 +3052,9 @@ export default function AudioPackGenerator() {
                     )}
                   </div>
                 </div>
+                    </>
+                  );
+                })()}
               </div>
             ) : null}
 
@@ -3090,14 +3145,8 @@ export default function AudioPackGenerator() {
 
                 <div className="flex-1 overflow-y-auto pt-4">
                   {(() => {
-                    const key = normalizeKey(meta.key);
-                    const soundNames = files.map((f) => {
-                      if (meta.modifyVanilla) {
-                        const event = f.vanillaEvent.trim();
-                        return event || `${key}.${f.newName}`;
-                      }
-                      return `${key}.${f.newName}`;
-                    });
+                    const sourceFiles = guideOpen && files.length === 0 ? getGuideDemoFiles() : files;
+                    const soundNames = buildCommandSoundNames(sourceFiles);
 
                     const linesOldJava = soundNames.map((s) => `/playsound ${s} @a ~ ~ ~ 10000`);
                     const linesNewJava = soundNames.map((s) => `/playsound ${s} record @a ~ ~ ~ 10000`);
@@ -3369,20 +3418,20 @@ function FileDropZone({
                   ].map((item, idx) => (
                     <div
                       key={item.originalName}
-                      className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-white p-4 shadow-sm"
+                      className="flex flex-col gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between sm:gap-4"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="mb-1 text-xs text-slate-400">已上传文件</div>
                         <div className="truncate text-sm font-bold text-slate-700" title={item.originalName}>
                           {item.originalName}
                         </div>
-                        <div className="mt-2 flex items-center gap-2 text-sm font-bold text-slate-700">
+                        <div className="mt-2 flex flex-col items-start gap-1 text-sm font-bold text-slate-700 sm:flex-row sm:items-center sm:gap-2">
                           <span className="text-xs font-bold text-slate-400">重命名</span>
                           <span className="rounded bg-sky-50 px-1.5 py-0.5 font-mono text-sky-600">{item.newName}</span>
                         </div>
                       </div>
 
-                      <div className="text-slate-300">
+                      <div className="hidden text-slate-300 sm:block">
                         <ArrowRight className="h-4 w-4" />
                       </div>
 
@@ -3454,7 +3503,10 @@ function FileDropZone({
             <div
               key={f.id}
               className={[
-                "group flex items-center justify-between gap-4 rounded-xl border bg-white p-4 shadow-sm transition",
+                "group rounded-xl border bg-white p-4 shadow-sm transition",
+                modifyVanilla
+                  ? "flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+                  : "flex items-center justify-between gap-4",
                 "border-slate-100 hover:border-sky-400/30",
                 f.status === "error" ? "border-red-200" : "",
               ].join(" ")}
@@ -3466,7 +3518,7 @@ function FileDropZone({
                     <div className="truncate text-sm font-bold text-slate-700" title={f.originalName}>
                       {f.originalName}
                     </div>
-                    <div className="mt-2 flex items-center gap-2 text-sm font-bold text-slate-700">
+                    <div className="mt-2 flex flex-col items-start gap-1 text-sm font-bold text-slate-700 sm:flex-row sm:items-center sm:gap-2">
                       <span className="text-xs font-bold text-slate-400">重命名</span>
                       {editingId === f.id ? (
                         <div className="min-w-0">
@@ -3517,7 +3569,7 @@ function FileDropZone({
                     </div>
                   </div>
 
-                  <div className="text-slate-300">
+                  <div className="hidden text-slate-300 sm:block">
                     <ArrowRight className="h-4 w-4" />
                   </div>
 
@@ -3608,7 +3660,7 @@ function FileDropZone({
               <button
                 type="button"
                 onClick={() => onRemoveFile(f.id)}
-                className="rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                className="self-end rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500 sm:self-auto"
               >
                 <Trash2 className="h-4 w-4" />
               </button>
