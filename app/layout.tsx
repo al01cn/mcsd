@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import Script from "next/script";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -136,6 +137,7 @@ export default function RootLayout({
   s.parentNode.insertBefore(hm, s);
 })();`}
         </Script>
+        <Analytics />
         {children}
       </body>
     </html>
