@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,66 +16,98 @@ const geistMono = Geist_Mono({
 const defaultTitle = "Minecraft 音频包生成器";
 const description = "在线生成Minecraft音频包，使用在线FFmpeg转换音频文件。纯本地运算，无需上传文件到服务器。";
 
-export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
-  applicationName: `${defaultTitle}`,
-  title: {
-    default: defaultTitle,
-    template: `%s | ${defaultTitle}`,
-  },
-  description,
-  alternates: {
-    canonical: "/",
-  },
-  keywords: [
-    "Minecraft",
-    "资源包",
-    "音频包",
-    "OGG",
-    "Vorbis",
-    "FFmpeg",
-    "sounds.json",
-    "Java版",
-    "基岩版",
-  ],
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
+async function getMetadataBase(): Promise<URL | undefined> {
+  const h = await headers();
+
+  const hostHeader = h.get("x-forwarded-host") ?? h.get("host");
+  const protoHeader = h.get("x-forwarded-proto");
+  const host = hostHeader?.split(",")[0]?.trim();
+  const proto = protoHeader?.split(",")[0]?.trim() || "https";
+
+  if (host) {
+    try {
+      return new URL(`${proto}://${host}`);
+    } catch {
+      void 0;
+    }
+  }
+
+  const env = process.env.NEXT_PUBLIC_SITE_URL;
+  if (env) {
+    try {
+      return new URL(env);
+    } catch {
+      void 0;
+    }
+  }
+
+  return undefined;
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const metadataBase = await getMetadataBase();
+
+  return {
+    metadataBase,
+    applicationName: `${defaultTitle}`,
+    title: {
+      default: defaultTitle,
+      template: `%s | ${defaultTitle}`,
+    },
+    description,
+    alternates: {
+      canonical: "/",
+    },
+    keywords: [
+      "Minecraft",
+      "资源包",
+      "音频包",
+      "OGG",
+      "Vorbis",
+      "FFmpeg",
+      "sounds.json",
+      "Java版",
+      "基岩版",
+    ],
+    robots: {
       index: true,
       follow: true,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-      "max-video-preview": -1,
-    },
-  },
-  openGraph: {
-    title: `${defaultTitle}`,
-    description,
-    type: "website",
-    locale: "zh_CN",
-    url: "/",
-    siteName: defaultTitle,
-    images: [
-      {
-        url: "/note_block.png",
-        width: 512,
-        height: 512,
-        alt: defaultTitle,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+        "max-video-preview": -1,
       },
-    ],
-  },
-  twitter: {
-    card: "summary",
-    title: `${defaultTitle}`,
-    description,
-    images: ["/note_block.png"],
-  },
-  icons: {
-    icon: [{ url: "/favicon.ico" }],
-    apple: [{ url: "/favicon.ico" }],
-  },
-};
+    },
+    openGraph: {
+      title: `${defaultTitle}`,
+      description,
+      type: "website",
+      locale: "zh_CN",
+      url: "/",
+      siteName: defaultTitle,
+      images: [
+        {
+          url: "/note_block.png",
+          width: 512,
+          height: 512,
+          alt: defaultTitle,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary",
+      title: `${defaultTitle}`,
+      description,
+      images: ["/note_block.png"],
+    },
+    icons: {
+      icon: [{ url: "/favicon.ico" }],
+      apple: [{ url: "/favicon.ico" }],
+    },
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",
