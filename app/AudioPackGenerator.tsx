@@ -1615,6 +1615,54 @@ function TopBar() {
   return <div className="h-2 bg-linear-to-r from-sky-400 via-sky-300 to-sky-500" />;
 }
 
+function BeianLinks({
+  variant,
+  className,
+}: {
+  variant: "vertical" | "horizontal";
+  className?: string;
+}) {
+  const linkClass =
+    "text-[var(--color-text-muted)] no-underline transition-colors duration-200 hover:text-[var(--color-primary)]";
+
+  if (variant === "vertical") {
+    return (
+      <div className={["text-[var(--color-text-muted)] text-[0.85rem] flex flex-col gap-1", className].filter(Boolean).join(" ")}>
+        <a className={linkClass} target="_blank" rel="noopener noreferrer" href="https://beian.miit.gov.cn/">
+          粤ICP备2025454179号
+        </a>
+        <a
+          className={linkClass}
+          target="_blank"
+          rel="noopener noreferrer"
+          href="https://beian.mps.gov.cn/#/query/webSearch?code=44060502003974"
+        >
+          粤公网安备44060502003974号
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={[
+        "text-[var(--color-text-muted)] text-[0.85rem] flex flex-wrap items-center justify-center gap-x-2 gap-y-1",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <a className={linkClass} target="_blank" rel="noopener noreferrer" href="https://beian.miit.gov.cn/">
+        粤ICP备2025454179号
+      </a>
+      <span aria-hidden="true">·</span>
+      <a className={linkClass} target="_blank" rel="noopener noreferrer" href="https://beian.mps.gov.cn/#/query/webSearch?code=44060502003974">
+        粤公网安备44060502003974号
+      </a>
+    </div>
+  );
+}
+
 function MobileStepBar({
   step,
   ffmpegLoaded,
@@ -1815,6 +1863,9 @@ function Sidebar({
           <LanguageToggle />
           <ThemeToggle />
         </div>
+      </div>
+      <div className="-mt-4 pl-2">
+        <BeianLinks variant="vertical" className="text-left text-[11px] leading-relaxed" />
       </div>
     </aside>
   );
@@ -3785,6 +3836,9 @@ export default function AudioPackGenerator() {
             ) : null}
           </div>
         </main>
+        <div className="lg:hidden px-2 pb-2">
+          <BeianLinks variant="horizontal" className="text-center text-[12px] leading-relaxed" />
+        </div>
       </div>
       {meta.modifyVanilla && step === 2 && files.length > 0 && vanillaEventOptions.length > 0 ? (
         <datalist id="vanilla-events">

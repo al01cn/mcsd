@@ -17,6 +17,8 @@
   --text-muted: #64748b;
   --text-subtle: #94a3b8;
   --text-faint: #cbd5e1;
+  --color-text-muted: var(--text-muted);
+  --color-primary: #0ea5e9;
   color-scheme: light;
 }
 
@@ -35,6 +37,8 @@
   --text-muted: #b8c9e6;
   --text-subtle: #cfe0ff;
   --text-faint: #e8f1ff;
+  --color-text-muted: var(--text-muted);
+  --color-primary: #0ea5e9;
   color-scheme: dark;
 }
 
