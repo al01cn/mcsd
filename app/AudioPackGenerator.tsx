@@ -89,6 +89,7 @@ type GuideAnchorKey =
   | "step1Next"
   | "step2AddFiles"
   | "step2DropZone"
+  | "step2VanillaEvent"
   | "step2StartProcessing"
   | "step3ProgressCard"
   | "step3LogCard"
@@ -110,6 +111,20 @@ const JAVA_DESC_MAX_LENGTH = 20;
 const BEDROCK_DESC_MAX_LENGTH = 40;
 const AUTO_DESC_SUFFIX = "By mcsd";
 const GUIDE_ACK_KEY = "mcsd_immersive_guide_ack_v1";
+const FFMPEG_WASM_MAX_INPUT_BYTES = 256 * 1024 * 1024;
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"] as const;
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const decimals = value >= 100 || unitIndex === 0 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(decimals)} ${units[unitIndex]}`;
+}
 
 function getDescLimit(platform: PackPlatform) {
   return platform === "bedrock" ? BEDROCK_DESC_MAX_LENGTH : JAVA_DESC_MAX_LENGTH;
@@ -123,18 +138,65 @@ function buildPackDescription(desc: string) {
 function buildImmersiveGuideItems({
   step,
   platform,
+  guideRound,
+  modifyVanilla,
   processingError,
   goToStep,
   startProcessing,
   downloadPack,
+  enableModifyVanilla,
+  startVanillaGuide,
 }: {
   step: Step;
   platform: PackPlatform;
+  guideRound: 1 | 2;
+  modifyVanilla: boolean;
   processingError: string | null;
   goToStep: (target: Step) => void;
   startProcessing: () => void;
   downloadPack: () => void;
+  enableModifyVanilla: () => void;
+  startVanillaGuide: () => void;
 }): GuideItem[] {
+  if (guideRound === 2) {
+    const step1: GuideItem[] = [
+      {
+        title: "打开“修改原版音频”",
+        desc: "如果想替换原版声音事件，需要打开开关。",
+        anchorKey: "step1ModifyVanilla",
+      },
+      {
+        title: "继续下一步",
+        desc: "点击“下一步”进入导入音频，并继续第二遍引导。",
+        anchorKey: "step1Next",
+        primaryLabel: "下一步",
+        primaryAction: () => {
+          enableModifyVanilla();
+          goToStep(2);
+        },
+      },
+    ];
+
+    const step2: GuideItem[] = [
+      {
+        title: "选择要替换的原版事件",
+        desc: "为每个文件选择 minecraft:... 原版声音事件；留空则不替换。",
+        anchorKey: "step2VanillaEvent",
+      },
+      {
+        title: "进入第三步",
+        desc: "确认无误后点击“开始处理”，进入第三步继续引导。",
+        anchorKey: "step2StartProcessing",
+        primaryLabel: "开始处理",
+        primaryAction: startProcessing,
+      },
+    ];
+
+    if (step === 1) return step1;
+    if (step === 2) return step2;
+    return [];
+  }
+
   const step1: GuideItem[] = [
     {
       title: "上传封面（可选）",
@@ -171,12 +233,21 @@ function buildImmersiveGuideItems({
   const step2: GuideItem[] = [
     { title: "添加音频文件", desc: "点击“添加文件”，或直接把文件拖入页面。", anchorKey: "step2AddFiles" },
     { title: "拖拽区与重命名", desc: "可在列表里重命名；移动端会弹窗编辑。", anchorKey: "step2DropZone" },
+    ...(modifyVanilla
+      ? [
+          {
+            title: "选择要替换的原版事件",
+            desc: "为每个文件选择 minecraft:... 原版声音事件；留空则不替换。",
+            anchorKey: "step2VanillaEvent",
+          } as const,
+        ]
+      : []),
     {
-      title: "开始处理",
-      desc: "确认文件已添加后，点击“开始处理”进行格式检查与转换。",
+      title: "可选：替换原版事件",
+      desc: "如果想替换原版声音事件，下一步会进入该部分引导，然后无缝进入第三步。",
       anchorKey: "step2StartProcessing",
-      primaryLabel: "开始处理",
-      primaryAction: startProcessing,
+      primaryLabel: "下一步",
+      primaryAction: startVanillaGuide,
     },
   ];
 
@@ -1414,6 +1485,7 @@ export default function AudioPackGenerator() {
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [guideRound, setGuideRound] = useState<1 | 2>(1);
   const [guideIndex, setGuideIndex] = useState(0);
   const [guideAnchorRect, setGuideAnchorRect] = useState<{
     top: number;
@@ -1432,6 +1504,7 @@ export default function AudioPackGenerator() {
     step1Next: null,
     step2AddFiles: null,
     step2DropZone: null,
+    step2VanillaEvent: null,
     step2StartProcessing: null,
     step3ProgressCard: null,
     step3LogCard: null,
@@ -1443,6 +1516,7 @@ export default function AudioPackGenerator() {
     original: Pick<PackMeta, "name" | "key" | "desc">;
     sample: Pick<PackMeta, "name" | "key" | "desc">;
   } | null>(null);
+  const guideSecondRoundModifyVanillaOpenedRef = useRef(false);
 
   const nameCount = meta.name.length;
   const descLimit = getDescLimit(meta.platform);
@@ -1572,10 +1646,18 @@ export default function AudioPackGenerator() {
 
   useEffect(() => {
     if (!meta.modifyVanilla) return;
+    if (step !== 2) return;
+    if (vanillaEventOptions.length > 0 && !vanillaEventLoading && !vanillaEventLoadFailed) return;
+    setVanillaEventLoading(true);
     setVanillaEventOptions(meta.platform === "bedrock" ? BEDROCK_VANILLA_EVENT_OPTIONS : JAVA_VANILLA_EVENT_OPTIONS);
     setVanillaEventLoading(false);
     setVanillaEventLoadFailed(false);
-  }, [meta.modifyVanilla, meta.platform]);
+  }, [meta.modifyVanilla, meta.platform, step, vanillaEventLoadFailed, vanillaEventLoading, vanillaEventOptions.length]);
+
+  useEffect(() => {
+    if (meta.modifyVanilla && (files.length > 0 || (guideOpen && guideRound === 2 && step === 2))) return;
+    guideAnchorsRef.current.step2VanillaEvent = null;
+  }, [files.length, guideOpen, guideRound, meta.modifyVanilla, step]);
 
   useEffect(() => {
     if (!meta.iconFile) {
@@ -1674,8 +1756,14 @@ export default function AudioPackGenerator() {
     }
     if (acked) return;
     setGuideOpen(true);
+    setGuideRound(1);
     setGuideIndex(0);
   }, [ffmpegLoaded]);
+
+  useEffect(() => {
+    if (!guideOpen) return;
+    setMeta((prev) => (prev.modifyVanilla ? { ...prev, modifyVanilla: false } : prev));
+  }, [guideOpen]);
 
   useEffect(() => {
     if (guideOpen) {
@@ -1723,13 +1811,18 @@ export default function AudioPackGenerator() {
       setGuideAnchorRect(null);
       return;
     }
+    const guideModifyVanilla = guideRound === 2;
     const items = buildImmersiveGuideItems({
       step,
       platform: meta.platform,
+      guideRound,
+      modifyVanilla: guideModifyVanilla,
       processingError: processing.error,
       goToStep: noopGoToStep,
       startProcessing: noop,
       downloadPack: noop,
+      enableModifyVanilla: noop,
+      startVanillaGuide: noop,
     });
     const maxIndex = Math.max(0, items.length - 1);
     if (guideIndex > maxIndex) {
@@ -1784,7 +1877,48 @@ export default function AudioPackGenerator() {
       if (raf) cancelAnimationFrame(raf);
       ro?.disconnect();
     };
-  }, [guideIndex, guideOpen, meta.platform, processing.error, step]);
+  }, [guideIndex, guideOpen, guideRound, meta.platform, processing.error, step]);
+
+  useEffect(() => {
+    if (!guideOpen) return;
+    if (guideRound !== 2) return;
+    if (step !== 1) return;
+    if (meta.modifyVanilla) {
+      guideSecondRoundModifyVanillaOpenedRef.current = true;
+      return;
+    }
+    if (guideSecondRoundModifyVanillaOpenedRef.current) return;
+
+    const items = buildImmersiveGuideItems({
+      step,
+      platform: meta.platform,
+      guideRound,
+      modifyVanilla: true,
+      processingError: processing.error,
+      goToStep: noopGoToStep,
+      startProcessing: noop,
+      downloadPack: noop,
+      enableModifyVanilla: noop,
+      startVanillaGuide: noop,
+    });
+    const itemTotal = items.length;
+    if (itemTotal === 0) return;
+    const itemIndex = Math.min(Math.max(0, guideIndex), itemTotal - 1);
+    const item = items[itemIndex] ?? null;
+    if (item?.anchorKey !== "step1ModifyVanilla") return;
+
+    const timer = window.setTimeout(() => {
+      setMeta((prev) => ({
+        ...prev,
+        modifyVanilla: true,
+      }));
+      guideSecondRoundModifyVanillaOpenedRef.current = true;
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [guideIndex, guideOpen, guideRound, meta.modifyVanilla, meta.platform, processing.error, step]);
 
   useEffect(() => {
     if (step < 2) return;
@@ -1819,6 +1953,41 @@ export default function AudioPackGenerator() {
       error: null,
     });
     setAudioProgress({});
+  };
+
+  const startGuideSecondRound = () => {
+    guideAnchorsRef.current.step2VanillaEvent = null;
+    guideSecondRoundModifyVanillaOpenedRef.current = false;
+    setGuideRound(2);
+    setGuideIndex(0);
+    setGuideAnchorRect(null);
+    setStep(1);
+    setFiles([]);
+    setConvertLogs([]);
+    setAudioProgress({});
+    setProcessing({
+      title: "正在准备转换器...",
+      desc: "首次使用会下载转换组件，请耐心等待。",
+      currentFile: "Waiting to start...",
+      percent: 0,
+      error: null,
+    });
+    setMeta((prev) => ({
+      ...prev,
+      modifyVanilla: false,
+    }));
+  };
+
+  const startVanillaGuide = () => {
+    guideSecondRoundModifyVanillaOpenedRef.current = false;
+    setGuideRound(2);
+    setGuideIndex(0);
+    setGuideAnchorRect(null);
+    setStep(1);
+    setMeta((prev) => ({
+      ...prev,
+      modifyVanilla: false,
+    }));
   };
 
   const finishGuide = () => {
@@ -1863,8 +2032,15 @@ export default function AudioPackGenerator() {
     addingFilesRef.current = true;
 
     try {
-      const incoming = Array.from(list).filter((f) => f.type.startsWith("audio/"));
-      if (incoming.length === 0) return;
+      const rawIncoming = Array.from(list).filter((f) => f.type.startsWith("audio/"));
+      const incoming = rawIncoming.filter((f) => f.size <= FFMPEG_WASM_MAX_INPUT_BYTES);
+      const skippedTooLarge = rawIncoming.length - incoming.length;
+      if (incoming.length === 0) {
+        if (skippedTooLarge > 0) {
+          alert(`已跳过：文件过大 ${skippedTooLarge} 个（单个文件最大 ${formatBytes(FFMPEG_WASM_MAX_INPUT_BYTES)}）`);
+        }
+        return;
+      }
 
       const current = filesRef.current;
       const usedNames = new Set(current.map((f) => f.newName));
@@ -1917,11 +2093,13 @@ export default function AudioPackGenerator() {
         setFiles((prev) => [...prev, ...nextItems]);
       }
 
-      if (skippedDuplicate > 0 || skippedNameConflict > 0 || skippedHashError > 0) {
+      if (skippedDuplicate > 0 || skippedNameConflict > 0 || skippedHashError > 0 || skippedTooLarge > 0) {
         const parts: string[] = [];
         if (skippedDuplicate > 0) parts.push(`重复音频 ${skippedDuplicate} 个`);
         if (skippedNameConflict > 0) parts.push(`命名冲突 ${skippedNameConflict} 个`);
         if (skippedHashError > 0) parts.push(`哈希失败 ${skippedHashError} 个`);
+        if (skippedTooLarge > 0)
+          parts.push(`文件过大 ${skippedTooLarge} 个（单个文件最大 ${formatBytes(FFMPEG_WASM_MAX_INPUT_BYTES)}）`);
         alert(`已跳过：${parts.join("，")}`);
       }
     } finally {
@@ -2295,18 +2473,32 @@ export default function AudioPackGenerator() {
       ) : null}
       {(() => {
         if (!guideOpen) return null;
+        const guideModifyVanilla = guideRound === 2;
         const guideItems = buildImmersiveGuideItems({
           step,
           platform: meta.platform,
+          guideRound,
+          modifyVanilla: guideModifyVanilla,
           processingError: processing.error,
           goToStep,
-          startProcessing: () => void startProcessing(),
+          startProcessing: () => {
+            if (guideRound === 2) setGuideRound(1);
+            void startProcessing();
+          },
           downloadPack: () => void downloadPack(),
+          enableModifyVanilla: () =>
+            setMeta((prev) => (prev.modifyVanilla ? prev : { ...prev, modifyVanilla: true })),
+          startVanillaGuide,
         });
         const itemTotal = guideItems.length;
         if (itemTotal === 0) return null;
         const itemIndex = Math.min(Math.max(0, guideIndex), itemTotal - 1);
-        const item = guideItems[itemIndex];
+        const rawItem = guideItems[itemIndex];
+        const isLast = itemIndex + 1 >= itemTotal;
+        const item =
+          isLast && guideRound === 1 && step < 3 && !rawItem.primaryAction
+            ? { ...rawItem, primaryLabel: rawItem.primaryLabel ?? "下一步" }
+            : rawItem;
         const stepTitle =
           (
             {
@@ -2321,7 +2513,7 @@ export default function AudioPackGenerator() {
         return (
           <ImmersiveGuideOverlay
             step={step}
-            stepTitle={stepTitle}
+            stepTitle={`${stepTitle}（第 ${guideRound} 遍）`}
             itemIndex={itemIndex}
             itemTotal={itemTotal}
             item={item}
@@ -2334,6 +2526,14 @@ export default function AudioPackGenerator() {
               }
               if (item.primaryAction) {
                 item.primaryAction();
+                return;
+              }
+              if (guideRound === 1) {
+                if (step >= 3) {
+                  finishGuide();
+                  return;
+                }
+                startGuideSecondRound();
                 return;
               }
               finishGuide();
@@ -2620,6 +2820,10 @@ export default function AudioPackGenerator() {
                     onRemoveFile={onRemoveFile}
                     onRenameFile={onRenameFile}
                     onUpdateVanillaEvent={onUpdateVanillaEvent}
+                    onVanillaEventAnchor={(el) => {
+                      if (!meta.modifyVanilla) return;
+                      guideAnchorsRef.current.step2VanillaEvent = el;
+                    }}
                     vanillaEventOptions={vanillaEventOptions}
                     vanillaEventLoading={vanillaEventLoading}
                     vanillaEventLoadFailed={vanillaEventLoadFailed}
@@ -2993,7 +3197,7 @@ export default function AudioPackGenerator() {
           </div>
         </main>
       </div>
-      {vanillaEventOptions.length > 0 ? (
+      {meta.modifyVanilla && step === 2 && files.length > 0 && vanillaEventOptions.length > 0 ? (
         <datalist id="vanilla-events">
           {vanillaEventOptions.map((v) => (
             <option key={v.key} value={v.key} />
@@ -3012,6 +3216,7 @@ function FileDropZone({
   onRemoveFile,
   onRenameFile,
   onUpdateVanillaEvent,
+  onVanillaEventAnchor,
   vanillaEventOptions,
   vanillaEventLoading,
   vanillaEventLoadFailed,
@@ -3023,6 +3228,7 @@ function FileDropZone({
   onRemoveFile: (id: string) => void;
   onRenameFile: (id: string, value: string) => string | null;
   onUpdateVanillaEvent: (id: string, value: string) => void;
+  onVanillaEventAnchor?: (el: HTMLElement | null) => void;
   vanillaEventOptions: VanillaEventOption[];
   vanillaEventLoading: boolean;
   vanillaEventLoadFailed: boolean;
@@ -3135,46 +3341,105 @@ function FileDropZone({
             </div>
             <h3 className="font-bold text-slate-700">拖放音频文件到这里</h3>
             <p className="mt-1 text-sm text-slate-400">支持 MP3, WAV, OGG 等音频格式</p>
+            <div className="mt-4 w-full max-w-md rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-left">
+              <div className="text-[11px] font-extrabold text-slate-500">文件大小提示</div>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-[11px] font-bold leading-relaxed text-slate-400">
+                <li>单个文件建议 ≤ 100MB（不同浏览器内存策略不同，过大可能卡死）</li>
+                <li>单个文件超过 {formatBytes(FFMPEG_WASM_MAX_INPUT_BYTES)} 将被跳过</li>
+              </ul>
+            </div>
           </div>
 
           {guideDemo ? (
             <div className="pointer-events-none mt-8 w-full max-w-2xl text-left">
               <div className="mb-2 text-xs font-extrabold text-slate-400">示例（引导模式）</div>
-              <div className={["grid gap-3", modifyVanilla ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"].join(" ")}>
-                <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1 truncate text-xs text-slate-400" title="demo_song.mp3">
-                      demo_song.mp3
-                    </div>
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                      <ArrowRight className="h-3 w-3 text-sky-500" />
-                      <span className="rounded bg-sky-50 px-1.5 py-0.5 font-mono text-sky-600">song1</span>
-                    </div>
-                    {modifyVanilla ? (
-                      <div className="mt-2 text-[11px] font-bold text-slate-400">
-                        原版事件：minecraft:entity.player.hurt
+              {modifyVanilla ? (
+                <div className="grid gap-3">
+                  {[
+                    {
+                      originalName: "demo_song.mp3",
+                      newName: "song1",
+                      vanillaEvent: "minecraft:entity.player.hurt",
+                    },
+                    {
+                      originalName: "bgm.ogg",
+                      newName: "bgm1",
+                      vanillaEvent: "minecraft:music.overworld",
+                    },
+                  ].map((item, idx) => (
+                    <div
+                      key={item.originalName}
+                      className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-white p-4 shadow-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 text-xs text-slate-400">已上传文件</div>
+                        <div className="truncate text-sm font-bold text-slate-700" title={item.originalName}>
+                          {item.originalName}
+                        </div>
+                        <div className="mt-2 flex items-center gap-2 text-sm font-bold text-slate-700">
+                          <span className="text-xs font-bold text-slate-400">重命名</span>
+                          <span className="rounded bg-sky-50 px-1.5 py-0.5 font-mono text-sky-600">{item.newName}</span>
+                        </div>
                       </div>
-                    ) : null}
-                  </div>
-                </div>
 
-                <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1 truncate text-xs text-slate-400" title="bgm.ogg">
-                      bgm.ogg
-                    </div>
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                      <ArrowRight className="h-3 w-3 text-sky-500" />
-                      <span className="rounded bg-sky-50 px-1.5 py-0.5 font-mono text-sky-600">bgm1</span>
-                    </div>
-                    {modifyVanilla ? (
-                      <div className="mt-2 text-[11px] font-bold text-slate-400">
-                        原版事件：minecraft:music.overworld
+                      <div className="text-slate-300">
+                        <ArrowRight className="h-4 w-4" />
                       </div>
-                    ) : null}
+
+                      <div ref={idx === 0 ? onVanillaEventAnchor : undefined} className="min-w-0 flex-1">
+                        <div className="mb-1 text-xs text-sky-500">替换原版事件（可选）</div>
+                        <input
+                          list="vanilla-events"
+                          disabled
+                          readOnly
+                          placeholder={
+                            vanillaEventLoading
+                              ? "正在加载事件列表..."
+                              : vanillaEventLoadFailed
+                                ? "事件列表加载失败，请刷新页面"
+                                : "留空则不替换"
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
+                          value={item.vanillaEvent}
+                        />
+                        <div className="mt-1 text-[11px] font-bold text-slate-400">
+                          {vanillaEventLoading
+                            ? "正在加载..."
+                            : vanillaEventLoadFailed
+                              ? "加载失败"
+                              : `已加载 ${vanillaEventOptions.length} 个事件`}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 truncate text-xs text-slate-400" title="demo_song.mp3">
+                        demo_song.mp3
+                      </div>
+                      <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                        <ArrowRight className="h-3 w-3 text-sky-500" />
+                        <span className="rounded bg-sky-50 px-1.5 py-0.5 font-mono text-sky-600">song1</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 truncate text-xs text-slate-400" title="bgm.ogg">
+                        bgm.ogg
+                      </div>
+                      <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                        <ArrowRight className="h-3 w-3 text-sky-500" />
+                        <span className="rounded bg-sky-50 px-1.5 py-0.5 font-mono text-sky-600">bgm1</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           ) : null}
         </div>
@@ -3256,7 +3521,10 @@ function FileDropZone({
                     <ArrowRight className="h-4 w-4" />
                   </div>
 
-                  <div className="min-w-0 flex-1">
+                  <div
+                    ref={f === files[0] ? onVanillaEventAnchor : undefined}
+                    className="min-w-0 flex-1"
+                  >
                     <div className="mb-1 text-xs text-sky-500">替换原版事件（可选）</div>
                     <input
                       list="vanilla-events"
