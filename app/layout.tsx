@@ -128,14 +128,17 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Script id="baidu-hm" strategy="afterInteractive">
-          {`var _hmt = _hmt || [];
-(function() {
-  var hm = document.createElement("script");
-  hm.src = "https://hm.baidu.com/hm.js?27aeec8f9c84f9129d12c1be2b3ad9e6";
-  var s = document.getElementsByTagName("script")[0];
-  s.parentNode.insertBefore(hm, s);
-})();`}
+        <Script
+          async
+          src="https://www.googletagmanager.com/gtag/js?id=G-QTTGYTZ5GR"
+          strategy="afterInteractive"
+        />
+        <Script id="google-gtag" strategy="afterInteractive">
+          {`window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-QTTGYTZ5GR');`}
         </Script>
         <Analytics />
         {children}

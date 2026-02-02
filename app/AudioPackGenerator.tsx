@@ -34,12 +34,13 @@ import {
   useContext,
   useMemo,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import ffmpeg from "../lib/ffmpeg";
 import mcVersions, { type JavaPackVersion } from "../lib/mcver";
-import { vanillaSoundBedrock, vanillaSoundJava } from "../lib/sounds";
 import WebConfig from "../lib/config";
 import updateLogs from "../lib/update_logs";
+import { buildSoundEventSearchText, translateSoundEventKeyZh } from "../lib/SoundsTranslate";
 
 type PackPlatform = "java" | "bedrock";
 
@@ -309,7 +310,6 @@ function buildImmersiveGuideItems({
   processingError,
   goToStep,
   startProcessing,
-  downloadPack,
   enableModifyVanilla,
   startVanillaGuide,
 }: {
@@ -320,7 +320,6 @@ function buildImmersiveGuideItems({
   processingError: string | null;
   goToStep: (target: Step) => void;
   startProcessing: () => void;
-  downloadPack: () => void;
   enableModifyVanilla: () => void;
   startVanillaGuide: () => void;
 }): GuideItem[] {
@@ -383,8 +382,8 @@ function buildImmersiveGuideItems({
           {
             title: tr("选择资源包版本", "Choose Pack Format"),
             desc: tr(
-              "仅 Java 版需要选择；选错不会影响使用，但新版本里可能出现“不兼容”提示。",
-              "Java only. Wrong format may still work, but newer versions may show “incompatible”."
+              "点击后会弹出版本列表，可在搜索框输入版本文本过滤（仅匹配版本文本）。选错通常不影响使用，但新版本里可能出现“不兼容”提示。",
+              "Java only. Opens a list with search (matches version text only). Wrong selection may still work, but newer versions may show “incompatible”."
             ),
             anchorKey: "step1JavaPackFormat",
           } as const,
@@ -432,8 +431,6 @@ function buildImmersiveGuideItems({
       title: tr("下载资源包", "Download Pack"),
       desc: tr("点击下载 zip / mcpack 文件。", "Download as zip / mcpack."),
       anchorKey: "step4Download",
-      primaryLabel: tr("下载", "Download"),
-      primaryAction: downloadPack,
     },
     {
       title: tr("生成命令", "Generate Commands"),
@@ -513,29 +510,87 @@ function extractBedrockVanillaSoundEvents(source: unknown): string[] {
   return Array.from(result).sort((a, b) => a.localeCompare(b));
 }
 
-const JAVA_VANILLA_EVENT_OPTIONS: VanillaEventOption[] = buildVanillaEventOptions(
-  Object.keys(vanillaSoundJava as Record<string, unknown>)
-);
-const BEDROCK_VANILLA_EVENT_OPTIONS: VanillaEventOption[] = buildVanillaEventOptions(
-  extractBedrockVanillaSoundEvents(vanillaSoundBedrock)
-);
+type VanillaEventsCache = {
+  v: 1;
+  platform: PackPlatform;
+  hash: string;
+  keys: string[];
+};
+
+type SoundsModule = typeof import("../lib/sounds");
+
+let soundsModulePromise: Promise<SoundsModule> | null = null;
+
+function preloadSoundsModule(): Promise<SoundsModule> {
+  if (!soundsModulePromise) soundsModulePromise = import("../lib/sounds");
+  return soundsModulePromise;
+}
+
+function fnv1aHash(input: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+function buildVanillaEventsCacheKey(platform: PackPlatform) {
+  return `mcsd_vanilla_events_cache_v1:${platform}`;
+}
+
+function readVanillaEventsCache(platform: PackPlatform): VanillaEventsCache | null {
+  try {
+    const raw = localStorage.getItem(buildVanillaEventsCacheKey(platform));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as VanillaEventsCache;
+    if (parsed?.v !== 1) return null;
+    if (parsed.platform !== platform) return null;
+    if (!Array.isArray(parsed.keys) || typeof parsed.hash !== "string") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeVanillaEventsCache(platform: PackPlatform, keys: string[], hash: string) {
+  try {
+    const payload: VanillaEventsCache = { v: 1, platform, keys, hash };
+    localStorage.setItem(buildVanillaEventsCacheKey(platform), JSON.stringify(payload));
+  } catch {
+    void 0;
+  }
+}
+
+async function loadVanillaEventKeysFromSource(platform: PackPlatform): Promise<string[]> {
+  const mod = await preloadSoundsModule();
+  if (platform === "bedrock") return extractBedrockVanillaSoundEvents(mod.vanillaSoundBedrock);
+  return Object.keys(mod.vanillaSoundJava as Record<string, unknown>).sort((a, b) => a.localeCompare(b));
+}
+
+async function loadVanillaEventKeysAndHash(platform: PackPlatform): Promise<{ keys: string[]; hash: string }> {
+  const keys = await loadVanillaEventKeysFromSource(platform);
+  const hash = fnv1aHash(keys.join("\n"));
+  return { keys, hash };
+}
 
 function buildJavaPackFormatOptions(list: JavaPackVersion[]) {
-  const map = new Map<number, string>();
-  for (const item of list) {
-    const parsed = Number(item.pack_format);
-    if (!Number.isFinite(parsed)) continue;
-    const packFormat = Math.trunc(parsed);
-    if (packFormat <= 0) continue;
-    map.set(packFormat, item.version);
-  }
-  return Array.from(map.entries())
-    .map(([packFormat, version]) => ({ packFormat, version }))
-    .sort((a, b) => b.packFormat - a.packFormat);
+  return list
+    .map((item) => {
+      const packFormat = String(item.pack_format ?? "").trim();
+      const packFormatNumeric = Number(packFormat);
+      return { packFormat, packFormatNumeric, version: item.version };
+    })
+    .filter((item) => item.packFormat.length > 0 && Number.isFinite(item.packFormatNumeric) && item.packFormatNumeric > 0)
+    .sort((a, b) => {
+      if (b.packFormatNumeric !== a.packFormatNumeric) return b.packFormatNumeric - a.packFormatNumeric;
+      return b.version.localeCompare(a.version);
+    })
+    .map(({ packFormat, version }) => ({ packFormat, version }));
 }
 
 const JAVA_PACK_FORMAT_OPTIONS = buildJavaPackFormatOptions(mcVersions);
-const DEFAULT_JAVA_PACK_FORMAT = String(JAVA_PACK_FORMAT_OPTIONS[0]?.packFormat ?? 15);
+const DEFAULT_JAVA_PACK_FORMAT = JAVA_PACK_FORMAT_OPTIONS[0]?.packFormat ?? "15";
 
 function clampText(value: string, maxLength: number) {
   return value.length > maxLength ? value.slice(0, maxLength) : value;
@@ -1991,6 +2046,51 @@ export default function AudioPackGenerator() {
     root.classList.toggle("light", theme === "light");
   }, [theme, themeReady]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const schedule = (fn: () => void) => {
+      if (typeof window === "undefined") return;
+      const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number })
+        .requestIdleCallback;
+      if (typeof ric === "function") {
+        ric(() => {
+          if (cancelled) return;
+          fn();
+        }, { timeout: 2000 });
+        return;
+      }
+      window.setTimeout(() => {
+        if (cancelled) return;
+        fn();
+      }, 300);
+    };
+
+    schedule(() => {
+      void preloadSoundsModule();
+    });
+
+    schedule(() => {
+      void loadVanillaEventKeysAndHash("java").then(({ keys, hash }) => {
+        if (cancelled) return;
+        const cached = readVanillaEventsCache("java");
+        if (!cached || cached.hash !== hash) writeVanillaEventsCache("java", keys, hash);
+      });
+    });
+
+    schedule(() => {
+      void loadVanillaEventKeysAndHash("bedrock").then(({ keys, hash }) => {
+        if (cancelled) return;
+        const cached = readVanillaEventsCache("bedrock");
+        if (!cached || cached.hash !== hash) writeVanillaEventsCache("bedrock", keys, hash);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const [step, setStep] = useState<Step>(1);
   const [files, setFiles] = useState<FileItem[]>([]);
   const filesRef = useRef<FileItem[]>([]);
@@ -2010,10 +2110,16 @@ export default function AudioPackGenerator() {
     iconPreviewUrl: null,
     modifyVanilla: false,
   });
+  const [packFormatDialogOpen, setPackFormatDialogOpen] = useState(false);
+  const [packFormatDialogQuery, setPackFormatDialogQuery] = useState("");
+  const packFormatDialogInputRef = useRef<HTMLInputElement | null>(null);
+  const packFormatDialogLastActiveRef = useRef<HTMLElement | null>(null);
+
   const [vanillaEventOptions, setVanillaEventOptions] = useState<VanillaEventOption[]>([]);
   const [vanillaEventLoading, setVanillaEventLoading] = useState(false);
   const [vanillaEventLoadFailed, setVanillaEventLoadFailed] = useState(false);
   const vanillaEventOptionsPlatformRef = useRef<PackPlatform | null>(null);
+  const vanillaEventLoadSeqRef = useRef(0);
 
   const [processing, setProcessing] = useState<{
     title: string;
@@ -2062,6 +2168,15 @@ export default function AudioPackGenerator() {
     step4Next: null,
     step5DownloadTxt: null,
   });
+  const guideAnchorElRef = useRef<HTMLElement | null>(null);
+  const guideAnchorRafRef = useRef(0);
+  const guideAnchorResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const guideAnchorLastRectRef = useRef<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const guideAutoFillRef = useRef<{
     original: Pick<PackMeta, "name" | "key" | "desc">;
     sample: Pick<PackMeta, "name" | "key" | "desc">;
@@ -2286,19 +2401,48 @@ export default function AudioPackGenerator() {
   useEffect(() => {
     if (!meta.modifyVanilla) return;
     if (step !== 2) return;
-    if (
-      vanillaEventOptionsPlatformRef.current === meta.platform &&
-      vanillaEventOptions.length > 0 &&
-      !vanillaEventLoading &&
-      !vanillaEventLoadFailed
-    ) {
+    const platform = meta.platform;
+    if (vanillaEventOptionsPlatformRef.current === platform && vanillaEventOptions.length > 0 && !vanillaEventLoadFailed) return;
+    const seq = (vanillaEventLoadSeqRef.current += 1);
+
+    const cached = readVanillaEventsCache(platform);
+    if (cached?.keys?.length) {
+      setVanillaEventOptions(buildVanillaEventOptions(cached.keys));
+      vanillaEventOptionsPlatformRef.current = platform;
+      setVanillaEventLoading(false);
+      setVanillaEventLoadFailed(false);
+
+      void loadVanillaEventKeysAndHash(platform)
+        .then(({ keys, hash }) => {
+          if (vanillaEventLoadSeqRef.current !== seq) return;
+          if (cached.hash === hash) return;
+          writeVanillaEventsCache(platform, keys, hash);
+          setVanillaEventOptions(buildVanillaEventOptions(keys));
+          vanillaEventOptionsPlatformRef.current = platform;
+        })
+        .catch(() => {
+          if (vanillaEventLoadSeqRef.current !== seq) return;
+          setVanillaEventLoadFailed(true);
+        });
       return;
     }
+
     setVanillaEventLoading(true);
-    setVanillaEventOptions(meta.platform === "bedrock" ? BEDROCK_VANILLA_EVENT_OPTIONS : JAVA_VANILLA_EVENT_OPTIONS);
-    vanillaEventOptionsPlatformRef.current = meta.platform;
-    setVanillaEventLoading(false);
     setVanillaEventLoadFailed(false);
+    void loadVanillaEventKeysAndHash(platform)
+      .then(({ keys, hash }) => {
+        if (vanillaEventLoadSeqRef.current !== seq) return;
+        writeVanillaEventsCache(platform, keys, hash);
+        setVanillaEventOptions(buildVanillaEventOptions(keys));
+        vanillaEventOptionsPlatformRef.current = platform;
+        setVanillaEventLoading(false);
+        setVanillaEventLoadFailed(false);
+      })
+      .catch(() => {
+        if (vanillaEventLoadSeqRef.current !== seq) return;
+        setVanillaEventLoading(false);
+        setVanillaEventLoadFailed(true);
+      });
   }, [meta.modifyVanilla, meta.platform, step, vanillaEventLoadFailed, vanillaEventLoading, vanillaEventOptions.length]);
 
   useEffect(() => {
@@ -2413,6 +2557,49 @@ export default function AudioPackGenerator() {
   }, [guideOpen]);
 
   useEffect(() => {
+    if (!packFormatDialogOpen) return;
+    packFormatDialogLastActiveRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    requestAnimationFrame(() => {
+      packFormatDialogInputRef.current?.focus();
+      packFormatDialogInputRef.current?.select();
+    });
+    return () => {
+      packFormatDialogLastActiveRef.current?.focus?.();
+    };
+  }, [packFormatDialogOpen]);
+
+  const currentJavaPackFormatLabel = useMemo(() => {
+    const current = meta.javaPackFormat.trim();
+    if (!current) return "";
+    const matched = JAVA_PACK_FORMAT_OPTIONS.find((opt) => String(opt.packFormat) === current);
+    if (matched) return matched.version;
+    return current;
+  }, [meta.javaPackFormat]);
+
+  const normalizedPackFormatQuery = packFormatDialogQuery.trim().toLowerCase();
+  const packFormatDialogMatches = useMemo(() => {
+    if (!normalizedPackFormatQuery) return JAVA_PACK_FORMAT_OPTIONS;
+    return JAVA_PACK_FORMAT_OPTIONS.filter((opt) => opt.version.toLowerCase().includes(normalizedPackFormatQuery));
+  }, [normalizedPackFormatQuery]);
+
+  const openPackFormatDialog = (e?: ReactMouseEvent<HTMLElement>) => {
+    if (!e) return;
+    packFormatDialogLastActiveRef.current = e.currentTarget;
+    setPackFormatDialogQuery("");
+    setPackFormatDialogOpen(true);
+  };
+
+  const closePackFormatDialog = () => {
+    setPackFormatDialogOpen(false);
+    setPackFormatDialogQuery("");
+  };
+
+  const applyPackFormatDialogValue = (value: string) => {
+    setMeta((prev) => ({ ...prev, javaPackFormat: value }));
+    closePackFormatDialog();
+  };
+
+  useEffect(() => {
     if (guideOpen) {
       if (guideAutoFillRef.current) return;
       const sample: Pick<PackMeta, "name" | "key" | "desc"> = {
@@ -2455,9 +2642,69 @@ export default function AudioPackGenerator() {
 
   useEffect(() => {
     if (!guideOpen) {
+      if (guideAnchorRafRef.current) cancelAnimationFrame(guideAnchorRafRef.current);
+      guideAnchorRafRef.current = 0;
+      guideAnchorResizeObserverRef.current?.disconnect();
+      guideAnchorResizeObserverRef.current = null;
+      guideAnchorElRef.current = null;
+      guideAnchorLastRectRef.current = null;
       setGuideAnchorRect(null);
       return;
     }
+
+    const compute = () => {
+      const anchorEl = guideAnchorElRef.current;
+      if (!anchorEl) {
+        guideAnchorLastRectRef.current = null;
+        setGuideAnchorRect(null);
+        return;
+      }
+      const rect = anchorEl.getBoundingClientRect();
+      const expand = 10;
+      const next = {
+        top: Math.max(0, rect.top - expand),
+        left: Math.max(0, rect.left - expand),
+        width: rect.width + expand * 2,
+        height: rect.height + expand * 2,
+      };
+      const prev = guideAnchorLastRectRef.current;
+      if (
+        prev &&
+        prev.top === next.top &&
+        prev.left === next.left &&
+        prev.width === next.width &&
+        prev.height === next.height
+      ) {
+        return;
+      }
+      guideAnchorLastRectRef.current = next;
+      setGuideAnchorRect(next);
+    };
+
+    const schedule = () => {
+      if (guideAnchorRafRef.current) cancelAnimationFrame(guideAnchorRafRef.current);
+      guideAnchorRafRef.current = requestAnimationFrame(() => {
+        guideAnchorRafRef.current = 0;
+        compute();
+      });
+    };
+
+    const onResize = () => schedule();
+    const onScroll = () => schedule();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, true);
+
+    schedule();
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll, true);
+      if (guideAnchorRafRef.current) cancelAnimationFrame(guideAnchorRafRef.current);
+      guideAnchorRafRef.current = 0;
+    };
+  }, [guideOpen]);
+
+  useEffect(() => {
+    if (!guideOpen) return;
     const items = buildImmersiveGuideItems({
       tr: trNoop,
       step,
@@ -2466,7 +2713,6 @@ export default function AudioPackGenerator() {
       processingError: processing.error,
       goToStep: noopGoToStep,
       startProcessing: noop,
-      downloadPack: noop,
       enableModifyVanilla: noop,
       startVanillaGuide: noop,
     });
@@ -2478,51 +2724,75 @@ export default function AudioPackGenerator() {
 
     const item = items[guideIndex] ?? null;
     const anchorEl = item?.anchorKey ? guideAnchorsRef.current[item.anchorKey] : null;
+    guideAnchorResizeObserverRef.current?.disconnect();
+    guideAnchorResizeObserverRef.current = null;
+    guideAnchorElRef.current = anchorEl;
+    guideAnchorLastRectRef.current = null;
+
     if (!anchorEl) {
       setGuideAnchorRect(null);
       return;
     }
 
-    let raf = 0;
-    const update = () => {
-      const rect = anchorEl.getBoundingClientRect();
-      const expand = 10;
-      setGuideAnchorRect({
-        top: Math.max(0, rect.top - expand),
-        left: Math.max(0, rect.left - expand),
-        width: rect.width + expand * 2,
-        height: rect.height + expand * 2,
-      });
-    };
-    const schedule = () => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
-    };
-
     try {
-      anchorEl.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+      const rect = anchorEl.getBoundingClientRect();
+      const margin = 80;
+      const inView = rect.top >= margin && rect.bottom <= window.innerHeight - margin;
+      if (!inView) anchorEl.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
     } catch {
       void 0;
     }
 
-    schedule();
-    window.addEventListener("resize", schedule);
-    window.addEventListener("scroll", schedule, true);
-
-    let ro: ResizeObserver | null = null;
     try {
-      ro = new ResizeObserver(schedule);
-      ro.observe(anchorEl);
+      guideAnchorResizeObserverRef.current = new ResizeObserver(() => {
+        if (guideAnchorRafRef.current) cancelAnimationFrame(guideAnchorRafRef.current);
+        guideAnchorRafRef.current = requestAnimationFrame(() => {
+          guideAnchorRafRef.current = 0;
+          const current = guideAnchorElRef.current;
+          if (!current) return;
+          const rect = current.getBoundingClientRect();
+          const expand = 10;
+          const next = {
+            top: Math.max(0, rect.top - expand),
+            left: Math.max(0, rect.left - expand),
+            width: rect.width + expand * 2,
+            height: rect.height + expand * 2,
+          };
+          const prev = guideAnchorLastRectRef.current;
+          if (
+            prev &&
+            prev.top === next.top &&
+            prev.left === next.left &&
+            prev.width === next.width &&
+            prev.height === next.height
+          ) {
+            return;
+          }
+          guideAnchorLastRectRef.current = next;
+          setGuideAnchorRect(next);
+        });
+      });
+      guideAnchorResizeObserverRef.current.observe(anchorEl);
     } catch {
-      ro = null;
+      guideAnchorResizeObserverRef.current = null;
     }
 
-    return () => {
-      window.removeEventListener("resize", schedule);
-      window.removeEventListener("scroll", schedule, true);
-      if (raf) cancelAnimationFrame(raf);
-      ro?.disconnect();
-    };
+    if (guideAnchorRafRef.current) cancelAnimationFrame(guideAnchorRafRef.current);
+    guideAnchorRafRef.current = requestAnimationFrame(() => {
+      guideAnchorRafRef.current = 0;
+      const current = guideAnchorElRef.current;
+      if (!current) return;
+      const rect = current.getBoundingClientRect();
+      const expand = 10;
+      const next = {
+        top: Math.max(0, rect.top - expand),
+        left: Math.max(0, rect.left - expand),
+        width: rect.width + expand * 2,
+        height: rect.height + expand * 2,
+      };
+      guideAnchorLastRectRef.current = next;
+      setGuideAnchorRect(next);
+    });
   }, [guideIndex, guideOpen, guidePhase, meta.platform, processing.error, step]);
 
   useEffect(() => {
@@ -2543,7 +2813,6 @@ export default function AudioPackGenerator() {
       processingError: processing.error,
       goToStep: noopGoToStep,
       startProcessing: noop,
-      downloadPack: noop,
       enableModifyVanilla: noop,
       startVanillaGuide: noop,
     });
@@ -3109,7 +3378,6 @@ export default function AudioPackGenerator() {
             if (guidePhase === "vanilla") setGuidePhase("main");
             void startProcessing();
           },
-          downloadPack: () => void downloadPack(),
           enableModifyVanilla: () =>
             setMeta((prev) => (prev.modifyVanilla ? prev : { ...prev, modifyVanilla: true })),
           startVanillaGuide,
@@ -3308,17 +3576,13 @@ export default function AudioPackGenerator() {
                             {tr("资源包版本", "Pack Format")} <span className="text-red-400">*</span>
                           </label>
                           <div className="relative">
-                            <select
-                              className="w-full appearance-none rounded-xl border-2 border-transparent bg-slate-50 px-4 py-3 pr-10 text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
-                              value={meta.javaPackFormat}
-                              onChange={(e) => setMeta((prev) => ({ ...prev, javaPackFormat: e.target.value }))}
+                            <button
+                              type="button"
+                              onClick={openPackFormatDialog}
+                              className="w-full rounded-xl border-2 border-transparent bg-slate-50 px-4 py-3 pr-10 text-left text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
                             >
-                              {JAVA_PACK_FORMAT_OPTIONS.map((opt) => (
-                                <option key={opt.packFormat} value={String(opt.packFormat)}>
-                                  {opt.version}
-                                </option>
-                              ))}
-                            </select>
+                              <div className="truncate text-sm font-bold">{currentJavaPackFormatLabel}</div>
+                            </button>
                             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                           </div>
                           <p className="ml-1 mt-1.5 text-xs text-slate-400">
@@ -3849,6 +4113,98 @@ export default function AudioPackGenerator() {
           <BeianLinks variant="horizontal" className="text-center text-[12px] leading-relaxed" />
         </div>
       </div>
+      {packFormatDialogOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closePackFormatDialog();
+          }}
+          onKeyDownCapture={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              closePackFormatDialog();
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
+            className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl outline-none"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+              <div className="min-w-0">
+                <div className="text-base font-extrabold text-slate-800">{tr("选择资源包版本", "Choose Pack Format")}</div>
+                <div className="mt-1 truncate text-sm text-slate-500" title={currentJavaPackFormatLabel}>
+                  {currentJavaPackFormatLabel}
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label={tr("关闭", "Close")}
+                onClick={closePackFormatDialog}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <div className="relative">
+                <input
+                  ref={packFormatDialogInputRef}
+                  value={packFormatDialogQuery}
+                  onChange={(e) => setPackFormatDialogQuery(e.target.value)}
+                  className="w-full rounded-2xl border-2 border-transparent bg-slate-50 py-3 pl-4 pr-11 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
+                  placeholder={tr("搜索版本文本", "Search version")}
+                />
+                {packFormatDialogQuery ? (
+                  <button
+                    type="button"
+                    aria-label={tr("清空输入", "Clear input")}
+                    onClick={() => {
+                      setPackFormatDialogQuery("");
+                      requestAnimationFrame(() => packFormatDialogInputRef.current?.focus());
+                    }}
+                    className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+              <div className="mb-2 text-[11px] font-bold text-slate-400">
+                {tr("匹配结果", "Matches")}: {packFormatDialogMatches.length}
+              </div>
+              <div className="grid gap-2">
+                {packFormatDialogMatches.map((opt) => {
+                  const value = String(opt.packFormat);
+                  const selected = value === meta.javaPackFormat;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => applyPackFormatDialogValue(value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left transition hover:border-sky-300 hover:bg-sky-50"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-bold text-slate-800" title={opt.version}>
+                            {opt.version}
+                          </div>
+                        </div>
+                        {selected ? <Check className="h-4 w-4 text-sky-500" /> : null}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {meta.modifyVanilla && step === 2 && files.length > 0 && vanillaEventOptions.length > 0 ? (
         <datalist id="vanilla-events">
           {vanillaEventOptions.map((v) => (
@@ -3900,6 +4256,10 @@ function FileDropZone({
   const [renameDialogError, setRenameDialogError] = useState<string | null>(null);
   const dialogInputRef = useRef<HTMLInputElement | null>(null);
   const lastActiveRef = useRef<HTMLElement | null>(null);
+  const [vanillaDialogOpen, setVanillaDialogOpen] = useState(false);
+  const [vanillaDialogFileId, setVanillaDialogFileId] = useState<string | null>(null);
+  const [vanillaDialogQuery, setVanillaDialogQuery] = useState("");
+  const vanillaDialogInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!renameDialogOpen) return;
@@ -3911,6 +4271,31 @@ function FileDropZone({
       lastActiveRef.current?.focus?.();
     };
   }, [renameDialogOpen]);
+
+  useEffect(() => {
+    if (!vanillaDialogOpen) return;
+    requestAnimationFrame(() => {
+      vanillaDialogInputRef.current?.focus();
+      vanillaDialogInputRef.current?.select();
+    });
+  }, [vanillaDialogOpen]);
+
+  const vanillaEventOptionsForSearch = useMemo(() => {
+    return vanillaEventOptions.map((item) => {
+      const zh = translateSoundEventKeyZh(item.key);
+      const searchText = buildSoundEventSearchText(item.key).toLowerCase();
+      return { ...item, zh, searchText };
+    });
+  }, [vanillaEventOptions]);
+
+  const normalizedVanillaQuery = vanillaDialogQuery.trim().toLowerCase();
+  const vanillaDialogMatches = useMemo(() => {
+    if (!normalizedVanillaQuery) return vanillaEventOptionsForSearch;
+
+    const parts = normalizedVanillaQuery.split(/\s+/).filter(Boolean);
+    const filtered = vanillaEventOptionsForSearch.filter((item) => parts.every((part) => item.searchText.includes(part)));
+    return filtered;
+  }, [normalizedVanillaQuery, vanillaEventOptionsForSearch]);
 
   const beginInlineEdit = (item: FileItem) => {
     setEditingId(item.id);
@@ -3955,6 +4340,27 @@ function FileDropZone({
     setRenameDialogError(null);
   };
 
+  const openVanillaDialog = (item: FileItem) => {
+    setVanillaDialogFileId(item.id);
+    setVanillaDialogQuery(item.vanillaEvent);
+    setVanillaDialogOpen(true);
+  };
+
+  const closeVanillaDialog = () => {
+    setVanillaDialogOpen(false);
+    setVanillaDialogFileId(null);
+    setVanillaDialogQuery("");
+    requestAnimationFrame(() => {
+      lastActiveRef.current?.focus();
+    });
+  };
+
+  const applyVanillaDialogValue = (value: string) => {
+    if (!vanillaDialogFileId) return;
+    onUpdateVanillaEvent(vanillaDialogFileId, value);
+    closeVanillaDialog();
+  };
+
   const submitRenameDialog = () => {
     if (!renameDialogId) return;
     const err = onRenameFile(renameDialogId, renameDialogValue);
@@ -3970,6 +4376,7 @@ function FileDropZone({
   };
 
   const renameDialogItem = renameDialogId ? (files.find((f) => f.id === renameDialogId) ?? null) : null;
+  const vanillaDialogFile = vanillaDialogFileId ? (files.find((f) => f.id === vanillaDialogFileId) ?? null) : null;
 
   return (
     <div
@@ -4191,19 +4598,22 @@ function FileDropZone({
                     className="min-w-0 flex-1"
                   >
                     <div className="mb-1 text-xs text-sky-500">替换原版事件（可选）</div>
-                    <input
-                      list="vanilla-events"
-                      placeholder={
-                        vanillaEventLoading
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        lastActiveRef.current = e.currentTarget;
+                        openVanillaDialog(f);
+                      }}
+                      className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
+                    >
+                      {f.vanillaEvent
+                        ? f.vanillaEvent
+                        : vanillaEventLoading
                           ? "正在加载事件列表..."
                           : vanillaEventLoadFailed
                             ? "事件列表加载失败，请刷新页面"
-                            : "留空则不替换"
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
-                      value={f.vanillaEvent}
-                      onChange={(e) => onUpdateVanillaEvent(f.id, e.target.value)}
-                    />
+                            : "点此选择/搜索事件（留空则不替换）"}
+                    </button>
                     <div className="mt-1 text-[11px] font-bold text-slate-400">
                       {vanillaEventLoading
                         ? "正在加载..."
@@ -4362,6 +4772,122 @@ function FileDropZone({
               >
                 保存
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {vanillaDialogOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeVanillaDialog();
+          }}
+          onKeyDownCapture={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              closeVanillaDialog();
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
+            className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl outline-none"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+              <div className="min-w-0">
+                <div className="text-base font-extrabold text-slate-800">选择原版声音事件</div>
+                <div className="mt-1 truncate text-sm text-slate-500" title={vanillaDialogFile?.originalName ?? ""}>
+                  {vanillaDialogFile?.originalName ?? ""}
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭"
+                onClick={closeVanillaDialog}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <div className="relative">
+                <input
+                  ref={vanillaDialogInputRef}
+                  value={vanillaDialogQuery}
+                  onChange={(e) => setVanillaDialogQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    applyVanillaDialogValue(vanillaDialogQuery.trim());
+                  }}
+                  className="w-full rounded-2xl border-2 border-transparent bg-slate-50 py-3 pl-4 pr-11 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
+                  placeholder="搜索中/英关键词"
+                />
+                {vanillaDialogQuery ? (
+                  <button
+                    type="button"
+                    aria-label="清空输入"
+                    onClick={() => {
+                      setVanillaDialogQuery("");
+                      requestAnimationFrame(() => vanillaDialogInputRef.current?.focus());
+                    }}
+                    className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+              <button
+                type="button"
+                onClick={() => applyVanillaDialogValue("")}
+                className="mb-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left text-sm font-bold text-slate-700 transition hover:border-sky-300 hover:bg-sky-50"
+              >
+                留空（不替换）
+              </button>
+
+              {vanillaEventLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-500">
+                  正在加载事件列表...
+                </div>
+              ) : vanillaEventLoadFailed ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-3 text-sm font-bold text-red-600">
+                  事件列表加载失败，你仍可在上方输入框手动填写并回车确认。
+                </div>
+              ) : vanillaEventOptions.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-500">
+                  事件列表为空。
+                </div>
+              ) : (
+                <>
+                  <div className="mb-2 text-[11px] font-bold text-slate-400">
+                    匹配 {normalizedVanillaQuery ? "结果" : "事件"}：共 {vanillaDialogMatches.length} 条（总 {vanillaEventOptions.length} 条）
+                  </div>
+                  <div className="grid gap-2">
+                    {vanillaDialogMatches.map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => applyVanillaDialogValue(item.key)}
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left transition hover:border-sky-300 hover:bg-sky-50"
+                      >
+                        <div className="truncate text-sm font-bold text-slate-800" title={item.key}>
+                          {item.key}
+                        </div>
+                        <div className="mt-0.5 text-[11px] font-bold text-slate-400" title={item.zh}>
+                          {item.zh}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
