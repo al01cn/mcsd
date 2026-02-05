@@ -1,7 +1,12 @@
 export type FFmpegStatus = "idle" | "loading" | "success" | "error";
 
-const FFMPEG_CORE_CACHE_NAME = "mcsd_ffmpeg_core_cache_v1";
-const FFMPEG_PREFERRED_CDN_KEY = "mcsd_ffmpeg_preferred_cdn_v1";
+export const FFMPEG_CORE_CACHE_NAME = "mcsd_ffmpeg_core_cache_v1";
+export const FFMPEG_PREFERRED_CDN_KEY = "mcsd_ffmpeg_preferred_cdn_v1";
+export const FFMPEG_PREFERRED_CDN_LOCK_KEY = "mcsd_ffmpeg_preferred_cdn_lock_v1";
+export const FFMPEG_CDN_BASES = [
+  "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd",
+  "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd",
+] as const;
 
 export class FFmpegService {
   private static instance: FFmpegService;
@@ -14,6 +19,8 @@ export class FFmpegService {
   private status: FFmpegStatus = "idle";
   private progress = 0;
   private loadTask: Promise<void> | null = null;
+  private preferredCdnOverride: (typeof FFMPEG_CDN_BASES)[number] | null = null;
+  private preferredCdnLocked: boolean | null = null;
   private statusListeners = new Set<(status: FFmpegStatus) => void>();
   private progressListeners = new Set<(progress: number) => void>();
 
@@ -62,6 +69,32 @@ export class FFmpegService {
     return { status: this.status, progress: this.progress, loaded: this.loaded };
   }
 
+  public setPreferredCdn(baseURL: (typeof FFMPEG_CDN_BASES)[number], options?: { lock?: boolean }): void {
+    this.preferredCdnOverride = baseURL;
+    if (typeof options?.lock === "boolean") {
+      this.preferredCdnLocked = options.lock;
+      try {
+        localStorage.setItem(FFMPEG_PREFERRED_CDN_LOCK_KEY, options.lock ? "1" : "0");
+      } catch {
+        void 0;
+      }
+    }
+    try {
+      localStorage.setItem(FFMPEG_PREFERRED_CDN_KEY, baseURL);
+    } catch {
+      void 0;
+    }
+  }
+
+  public setPreferredCdnLock(locked: boolean): void {
+    this.preferredCdnLocked = locked;
+    try {
+      localStorage.setItem(FFMPEG_PREFERRED_CDN_LOCK_KEY, locked ? "1" : "0");
+    } catch {
+      void 0;
+    }
+  }
+
   public async load(): Promise<void> {
     if (this.loaded) return;
     if (this.loadTask) return this.loadTask;
@@ -84,6 +117,7 @@ export class FFmpegService {
         this.fetchFile = util.fetchFile;
         this.toBlobURL = async (url: string, mimeType: string) => {
           if (typeof caches === "undefined") return util.toBlobURL(url, mimeType);
+          if (mimeType !== "text/javascript" && mimeType !== "application/javascript") return util.toBlobURL(url, mimeType);
 
           const cache = await caches.open(FFMPEG_CORE_CACHE_NAME);
           const cached = await cache.match(url);
@@ -102,30 +136,56 @@ export class FFmpegService {
           this.emitProgress(value);
         });
 
-        const cdnBases = [
-          "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd",
-          "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd",
-        ] as const;
-
         const preferredBase = (() => {
           try {
             const value = localStorage.getItem(FFMPEG_PREFERRED_CDN_KEY);
-            return cdnBases.includes(value as (typeof cdnBases)[number]) ? (value as (typeof cdnBases)[number]) : null;
+            return FFMPEG_CDN_BASES.includes(value as (typeof FFMPEG_CDN_BASES)[number])
+              ? (value as (typeof FFMPEG_CDN_BASES)[number])
+              : null;
           } catch {
             return null;
           }
         })();
 
-        const baseCandidates = preferredBase
-          ? [preferredBase, ...cdnBases.filter((v) => v !== preferredBase)]
-          : [...cdnBases];
+        const preferredLocked = (() => {
+          if (typeof this.preferredCdnLocked === "boolean") return this.preferredCdnLocked;
+          try {
+            return localStorage.getItem(FFMPEG_PREFERRED_CDN_LOCK_KEY) === "1";
+          } catch {
+            return false;
+          }
+        })();
+
+        const baseCandidates = (() => {
+          const override = this.preferredCdnOverride;
+          const first =
+            override && FFMPEG_CDN_BASES.includes(override as (typeof FFMPEG_CDN_BASES)[number]) ? override : preferredBase;
+          if (!first) return [...FFMPEG_CDN_BASES];
+          return preferredLocked ? [first] : [first, ...FFMPEG_CDN_BASES.filter((v) => v !== first)];
+        })();
+
+        const getCachedWasmBlobURL = async (url: string): Promise<string | null> => {
+          if (typeof caches === "undefined") return null;
+          try {
+            const cache = await caches.open(FFMPEG_CORE_CACHE_NAME);
+            const cached = await cache.match(url);
+            if (!cached || !cached.ok) return null;
+            const buffer = await cached.arrayBuffer();
+            const blob = new Blob([buffer], { type: "application/wasm" });
+            return URL.createObjectURL(blob);
+          } catch {
+            return null;
+          }
+        };
 
         let lastError: unknown = null;
         for (const baseURL of baseCandidates) {
           try {
+            const coreURL = await this.toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript");
+            const wasmURL = `${baseURL}/ffmpeg-core.wasm`;
             await this.ffmpeg.load({
-              coreURL: await this.toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-              wasmURL: await this.toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+              coreURL,
+              wasmURL,
             });
             try {
               localStorage.setItem(FFMPEG_PREFERRED_CDN_KEY, baseURL);
@@ -135,6 +195,25 @@ export class FFmpegService {
             lastError = null;
             break;
           } catch (err) {
+            try {
+              const cachedWasmURL = await getCachedWasmBlobURL(`${baseURL}/ffmpeg-core.wasm`);
+              if (cachedWasmURL) {
+                const coreURL = await this.toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript");
+                await this.ffmpeg.load({
+                  coreURL,
+                  wasmURL: cachedWasmURL,
+                });
+                try {
+                  localStorage.setItem(FFMPEG_PREFERRED_CDN_KEY, baseURL);
+                } catch {
+                  void 0;
+                }
+                lastError = null;
+                break;
+              }
+            } catch {
+              void 0;
+            }
             lastError = err;
           }
         }

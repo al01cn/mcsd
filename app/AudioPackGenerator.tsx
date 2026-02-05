@@ -36,7 +36,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import ffmpeg from "../lib/ffmpeg";
+import ffmpeg, { FFMPEG_CDN_BASES, FFMPEG_CORE_CACHE_NAME, FFMPEG_PREFERRED_CDN_KEY } from "../lib/ffmpeg";
 import mcVersions, { type JavaPackVersion } from "../lib/mcver";
 import WebConfig from "../lib/config";
 import updateLogs from "../lib/update_logs";
@@ -216,8 +216,15 @@ type FileItem = {
   hash: string;
   newName: string;
   status: "pending" | "processing" | "done" | "error";
-  vanillaEvent: string;
+  vanillaEvents: VanillaEventMapping[];
   processedBlob: Blob | null;
+};
+
+type VanillaEventMapping = {
+  event: string;
+  weight: number;
+  pitch: number;
+  volume: number;
 };
 
 type ConvertLogItem = {
@@ -916,30 +923,58 @@ function uuid() {
 
 function buildJavaSoundsJson(
   key: string,
-  files: Array<Pick<FileItem, "newName" | "vanillaEvent">>,
+  files: Array<Pick<FileItem, "newName" | "vanillaEvents">>,
   modifyVanilla: boolean
 ) {
   const soundsJson: Record<string, unknown> = {};
   for (const f of files) {
     const soundPath = `${key}/${f.newName}`;
-    if (modifyVanilla && f.vanillaEvent) {
-      soundsJson[f.vanillaEvent] = {
-        replace: true,
-        sounds: [{ name: `${soundPath}`, stream: true }],
-      };
-    } else {
-      const customKey = `${key}.${f.newName}`;
-      soundsJson[customKey] = {
-        sounds: [{ name: `${soundPath}`, stream: true }],
-      };
+    const mappings = modifyVanilla ? (f.vanillaEvents ?? []) : [];
+    if (mappings.length > 0) {
+      const seen = new Set<string>();
+      for (const mapping of mappings) {
+        const eventKey = mapping.event.trim();
+        if (!eventKey || seen.has(eventKey)) continue;
+        seen.add(eventKey);
+
+        const existing = soundsJson[eventKey] as
+          | { replace?: boolean; sounds?: Array<{ name: string; stream?: boolean; weight?: number; pitch?: number; volume?: number }> }
+          | undefined;
+        const sounds = Array.isArray(existing?.sounds) ? [...existing.sounds] : [];
+        sounds.push(
+          [
+            { name: `${soundPath}`, stream: true },
+            Number.isFinite(mapping.weight) && mapping.weight > 0 ? { weight: mapping.weight } : null,
+            Number.isFinite(mapping.pitch) ? { pitch: mapping.pitch } : null,
+            Number.isFinite(mapping.volume) ? { volume: mapping.volume } : null,
+          ].reduce((acc, part) => (part ? { ...acc, ...part } : acc), {} as Record<string, unknown>) as {
+            name: string;
+            stream?: boolean;
+            weight?: number;
+            pitch?: number;
+            volume?: number;
+          }
+        );
+        soundsJson[eventKey] = {
+          replace: true,
+          sounds,
+        };
+      }
+      continue;
     }
+
+    const customKey = `${key}.${f.newName}`;
+    const existing = soundsJson[customKey] as { sounds?: Array<{ name: string; stream?: boolean }> } | undefined;
+    const sounds = Array.isArray(existing?.sounds) ? [...existing.sounds] : [];
+    sounds.push({ name: `${soundPath}`, stream: true });
+    soundsJson[customKey] = { sounds };
   }
   return soundsJson;
 }
 
 function buildBedrockSoundDefinitions(
   key: string,
-  files: Array<Pick<FileItem, "newName" | "vanillaEvent">>,
+  files: Array<Pick<FileItem, "newName" | "vanillaEvents">>,
   modifyVanilla: boolean
 ) {
   const definitions: Record<string, unknown> = {
@@ -949,14 +984,69 @@ function buildBedrockSoundDefinitions(
 
   const soundDefinitions = definitions.sound_definitions as Record<
     string,
-    { category: string; sounds: string[] }
+    { category: string; sounds: Array<string | { name: string; volume?: number; pitch?: number; weight?: number }> }
   >;
 
   for (const f of files) {
-    const eventKey = modifyVanilla && f.vanillaEvent?.trim() ? f.vanillaEvent.trim() : `${key}.${f.newName}`;
-    soundDefinitions[eventKey] = {
+    const soundValue = `sounds/${key}/${f.newName}`;
+    const mappings = modifyVanilla ? (f.vanillaEvents ?? []) : [];
+    if (mappings.length > 0) {
+      const seen = new Set<string>();
+      for (const mapping of mappings) {
+        const eventKey = mapping.event.trim();
+        if (!eventKey || seen.has(eventKey)) continue;
+        seen.add(eventKey);
+
+        const existing = soundDefinitions[eventKey];
+        if (existing) {
+          const already = existing.sounds.some((s) => (typeof s === "string" ? s === soundValue : s?.name === soundValue));
+          if (!already) {
+            existing.sounds = [
+              ...existing.sounds,
+              [
+                { name: soundValue },
+                Number.isFinite(mapping.volume) ? { volume: mapping.volume } : null,
+                Number.isFinite(mapping.pitch) ? { pitch: mapping.pitch } : null,
+                Number.isFinite(mapping.weight) && mapping.weight > 0 ? { weight: mapping.weight } : null,
+              ].reduce((acc, part) => (part ? { ...acc, ...part } : acc), {} as Record<string, unknown>) as {
+                name: string;
+                volume?: number;
+                pitch?: number;
+                weight?: number;
+              },
+            ];
+          }
+          continue;
+        }
+        soundDefinitions[eventKey] = {
+          category: "record",
+          sounds: [
+            [
+              { name: soundValue },
+              Number.isFinite(mapping.volume) ? { volume: mapping.volume } : null,
+              Number.isFinite(mapping.pitch) ? { pitch: mapping.pitch } : null,
+              Number.isFinite(mapping.weight) && mapping.weight > 0 ? { weight: mapping.weight } : null,
+            ].reduce((acc, part) => (part ? { ...acc, ...part } : acc), {} as Record<string, unknown>) as {
+              name: string;
+              volume?: number;
+              pitch?: number;
+              weight?: number;
+            },
+          ],
+        };
+      }
+      continue;
+    }
+
+    const customKey = `${key}.${f.newName}`;
+    const existing = soundDefinitions[customKey];
+    if (existing) {
+      if (!existing.sounds.includes(soundValue)) existing.sounds = [...existing.sounds, soundValue];
+      continue;
+    }
+    soundDefinitions[customKey] = {
       category: "record",
-      sounds: [`sounds/${key}/${f.newName}`],
+      sounds: [soundValue],
     };
   }
 
@@ -1102,15 +1192,17 @@ function FfmpegBlockingOverlay({
   stage,
   retryCount,
   maxRetries,
+  onOpenManualUpload,
 }: {
   stage: "loading" | "failed";
   retryCount: number;
   maxRetries: number;
+  onOpenManualUpload?: () => void;
 }) {
   const isError = stage === "failed";
   const title = isError ? "转换器加载失败" : "正在加载音频转换器";
   const desc = isError
-    ? `已重试 ${maxRetries} 次仍失败，请刷新页面后再试。`
+    ? `已重试 ${maxRetries} 次仍失败，可尝试更换 CDN 或刷新页面后再试。`
     : "加载FFmpeg中，请耐心等待，加载期间禁止任何操作。";
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const lastActiveRef = useRef<HTMLElement | null>(null);
@@ -1195,7 +1287,16 @@ function FfmpegBlockingOverlay({
         ) : null}
 
         {isError ? (
-          <div className="mt-5 flex justify-end">
+          <div className="mt-5 flex flex-wrap justify-end gap-3">
+            {typeof onOpenManualUpload === "function" ? (
+              <button
+                type="button"
+                onClick={onOpenManualUpload}
+                className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                更换CDN尝试
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => location.reload()}
@@ -1316,6 +1417,391 @@ function DisclaimerOverlay({ onClose }: { onClose: () => void }) {
         </div>
 
       </div>
+    </div>
+  );
+}
+
+function FfmpegCdnSelectOverlay({
+  defaultBase,
+  bases,
+  onConfirm,
+  onManualCacheReady,
+  autoOpenManualUpload,
+  onAutoOpenManualUploadConsumed,
+}: {
+  defaultBase: (typeof FFMPEG_CDN_BASES)[number];
+  bases: readonly (typeof FFMPEG_CDN_BASES)[number][];
+  onConfirm: (base: (typeof FFMPEG_CDN_BASES)[number]) => void;
+  onManualCacheReady: () => void;
+  autoOpenManualUpload?: boolean;
+  onAutoOpenManualUploadConsumed?: () => void;
+}) {
+  const { tr } = useLang();
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const lastActiveRef = useRef<HTMLElement | null>(null);
+  const testingRef = useRef(false);
+  const manualSelectRef = useRef(false);
+  const confirmBtnRef = useRef<HTMLButtonElement | null>(null);
+  const [manualUploadOpen, setManualUploadOpen] = useState(false);
+  const [manualCoreWasmFile, setManualCoreWasmFile] = useState<File | null>(null);
+  const [manualUploadBusy, setManualUploadBusy] = useState(false);
+  const [manualUploadError, setManualUploadError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<(typeof FFMPEG_CDN_BASES)[number]>(defaultBase);
+  const [testing, setTesting] = useState(false);
+  const [results, setResults] = useState<Record<string, { ms: number | null; status: "idle" | "ok" | "timeout" | "error" }>>(
+    () => Object.fromEntries(bases.map((b) => [b, { ms: null, status: "idle" }]))
+  );
+
+  useEffect(() => {
+    lastActiveRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.focus();
+    return () => {
+      lastActiveRef.current?.focus?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!autoOpenManualUpload) return;
+    setManualUploadError(null);
+    setManualUploadOpen(true);
+    onAutoOpenManualUploadConsumed?.();
+  }, [autoOpenManualUpload, onAutoOpenManualUploadConsumed]);
+
+  const probeBase = useCallback(async (base: string, timeoutMs: number) => {
+    const url = `${base}/ffmpeg-core.js?ping=${Date.now()}`;
+    const controller = new AbortController();
+    const start = performance.now();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      await fetch(url, { method: "HEAD", mode: "no-cors", cache: "no-store", signal: controller.signal });
+      const ms = Math.max(0, Math.round(performance.now() - start));
+      return { ms, status: "ok" as const };
+    } catch (err) {
+      const aborted = err instanceof DOMException && err.name === "AbortError";
+      return { ms: null, status: aborted ? ("timeout" as const) : ("error" as const) };
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }, []);
+
+  const runTests = useCallback(async () => {
+    if (testingRef.current) return;
+    testingRef.current = true;
+    setTesting(true);
+    setResults(Object.fromEntries(bases.map((b) => [b, { ms: null, status: "idle" as const }])));
+    try {
+      const timeoutMs = 3500;
+      const settled = await Promise.all(bases.map((b) => probeBase(b, timeoutMs).then((res) => [b, res] as const)));
+      setResults((prev) => {
+        const next: typeof prev = { ...prev };
+        for (const [base, res] of settled) next[base] = res;
+        return next;
+      });
+    } finally {
+      setTesting(false);
+      testingRef.current = false;
+    }
+  }, [bases, probeBase]);
+
+  useEffect(() => {
+    void runTests();
+  }, [runTests]);
+
+  const bestBase = useMemo<(typeof FFMPEG_CDN_BASES)[number] | null>(() => {
+    const okBases = bases
+      .map((base) => ({ base, res: results[base] }))
+      .filter((b): b is { base: (typeof FFMPEG_CDN_BASES)[number]; res: { ms: number; status: "ok" } } => {
+        return b.res?.status === "ok" && typeof b.res.ms === "number";
+      })
+      .sort((a, b) => a.res.ms - b.res.ms);
+    return okBases[0]?.base ?? null;
+  }, [bases, results]);
+
+  useEffect(() => {
+    if (testing) return;
+    if (!bestBase) return;
+    if (manualSelectRef.current) return;
+    setSelected(bestBase);
+  }, [bestBase, testing]);
+
+  const onManualUpload = useCallback(async () => {
+    if (manualUploadBusy) return;
+    setManualUploadError(null);
+
+    if (typeof caches === "undefined") {
+      setManualUploadError(tr("当前浏览器不支持 Cache Storage，无法写入缓存。", "Cache Storage is not available in this browser."));
+      return;
+    }
+
+    if (!manualCoreWasmFile) {
+      setManualUploadError(tr("请选择 ffmpeg-core.wasm 文件。", "Please select ffmpeg-core.wasm."));
+      return;
+    }
+
+    setManualUploadBusy(true);
+    try {
+      const wasmBuffer = await manualCoreWasmFile.arrayBuffer();
+      const cache = await caches.open(FFMPEG_CORE_CACHE_NAME);
+      const wasmURL = `${selected}/ffmpeg-core.wasm`;
+
+      await cache.put(
+        wasmURL,
+        new Response(wasmBuffer, {
+          status: 200,
+          headers: { "Content-Type": "application/wasm" },
+        })
+      );
+
+      onManualCacheReady();
+      setManualUploadOpen(false);
+      onConfirm(selected);
+    } catch {
+      setManualUploadError(tr("写入缓存失败，请更换浏览器或检查文件是否正确。", "Failed to write cache. Please try another browser or verify the files."));
+    } finally {
+      setManualUploadBusy(false);
+    }
+  }, [manualCoreWasmFile, manualUploadBusy, onConfirm, onManualCacheReady, selected, tr]);
+
+  const onKeyDownCapture = (e: ReactKeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      confirmBtnRef.current?.focus();
+      return;
+    }
+
+    if (e.key !== "Tab") return;
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      e.preventDefault();
+      return;
+    }
+
+    const focusables = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+      )
+    ).filter((el) => !el.hasAttribute("disabled") && el.tabIndex >= 0);
+
+    if (focusables.length === 0) {
+      e.preventDefault();
+      dialog.focus();
+      return;
+    }
+
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+
+    if (e.shiftKey) {
+      if (active === first || active === dialog) {
+        e.preventDefault();
+        last.focus();
+      }
+      return;
+    }
+
+    if (active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
+  const viewBases = bases.map((base) => {
+    const host = (() => {
+      try {
+        return new URL(base).host;
+      } catch {
+        return base;
+      }
+    })();
+    const res = results[base] ?? { ms: null, status: "idle" as const };
+    const label =
+      res.status === "ok" && typeof res.ms === "number"
+        ? `${res.ms} ms`
+        : res.status === "timeout"
+          ? tr("超时", "Timeout")
+          : res.status === "error"
+            ? tr("失败", "Failed")
+            : tr("测试中", "Testing");
+    return { base, host, res, label };
+  });
+
+  const best = viewBases
+    .filter((b) => b.res.status === "ok" && typeof b.res.ms === "number")
+    .sort((a, b) => (a.res.ms ?? Number.POSITIVE_INFINITY) - (b.res.ms ?? Number.POSITIVE_INFINITY))[0]?.base;
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/40 p-6 backdrop-blur-sm" onKeyDownCapture={onKeyDownCapture}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={tr("选择 FFmpeg 加载源", "Choose FFmpeg Source")}
+        tabIndex={-1}
+        className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-xl outline-none"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-base font-extrabold text-slate-800">{tr("选择 FFmpeg 加载源", "Choose FFmpeg Source")}</div>
+            <div className="mt-1 text-sm text-slate-500">
+              {tr("首次加载会下载 FFmpeg 核心资源，请选择你所在地区延迟更低的 CDN。", "First load downloads FFmpeg core assets. Choose a CDN with lower latency in your region.")}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {viewBases.map(({ base, host, label }) => {
+            const checked = selected === base;
+            const isBest = best === base;
+            return (
+              <label
+                key={base}
+                className={[
+                  "flex cursor-pointer items-center justify-between gap-3 rounded-2xl border px-4 py-3 transition",
+                  checked ? "border-sky-300 bg-sky-50" : "border-slate-200 bg-white hover:bg-slate-50",
+                ].join(" ")}
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="radio"
+                      name="ffmpeg-cdn"
+                      checked={checked}
+                      onChange={() => {
+                        manualSelectRef.current = true;
+                        setSelected(base);
+                      }}
+                      className="h-4 w-4 accent-sky-500"
+                    />
+                    <div className="text-sm font-extrabold text-slate-800">{host}</div>
+                    {isBest ? (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-extrabold text-emerald-700">
+                        {tr("最低延迟", "Lowest")}
+                      </span>
+                    ) : null}
+                    {base === defaultBase ? (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-extrabold text-slate-600">
+                        {tr("默认", "Default")}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 truncate text-xs font-bold text-slate-400">{base}</div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-sm font-extrabold text-slate-700">{label}</div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setManualUploadError(null);
+              setManualUploadOpen(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-extrabold text-slate-700 transition hover:bg-slate-50"
+          >
+            <UploadCloud className="h-4 w-4" />
+            <span>{tr("手动上传", "Manual Upload")}</span>
+          </button>
+
+          <div className="flex flex-wrap items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              manualSelectRef.current = false;
+              void runTests();
+            }}
+            disabled={testing}
+            className={[
+              "inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-extrabold transition",
+              testing ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+            ].join(" ")}
+          >
+            {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            <span>{tr("重新测试", "Retest")}</span>
+          </button>
+          <button
+            ref={confirmBtnRef}
+            type="button"
+            onClick={() => onConfirm(selected)}
+            className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-5 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-sky-600"
+          >
+            <Download className="h-4 w-4" />
+            <span>{tr("开始下载", "Start Download")}</span>
+          </button>
+          </div>
+        </div>
+      </div>
+
+      {manualUploadOpen ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/50 p-6 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={tr("手动上传 FFmpeg 核心文件", "Upload FFmpeg Core Files")}
+            className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
+          >
+            <div className="text-base font-extrabold text-slate-800">{tr("手动上传 FFmpeg 核心文件", "Upload FFmpeg Core Files")}</div>
+            <div className="mt-1 text-sm text-slate-500">
+              {tr(
+                "当部分网络环境下站点可以加载 JS 但无法拉取 ffmpeg-core.wasm 时，可手动上传 WASM 写入缓存以完成加载。",
+                "If the site can load JS but cannot fetch ffmpeg-core.wasm in some networks, upload the WASM to cache and finish loading."
+              )}
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <div className="text-sm font-extrabold text-slate-700">ffmpeg-core.wasm</div>
+                <input
+                  type="file"
+                  accept=".wasm,application/wasm"
+                  onChange={(e) => {
+                    const file = e.currentTarget.files?.[0] ?? null;
+                    setManualCoreWasmFile(file);
+                    setManualUploadError(null);
+                  }}
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700"
+                />
+              </div>
+              {manualUploadError ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+                  {manualUploadError}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setManualUploadOpen(false)}
+                disabled={manualUploadBusy}
+                className={[
+                  "inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-extrabold transition",
+                  manualUploadBusy ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+                ].join(" ")}
+              >
+                <span>{tr("返回", "Back")}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void onManualUpload()}
+                disabled={manualUploadBusy || !manualCoreWasmFile}
+                className={[
+                  "inline-flex items-center gap-2 rounded-2xl px-5 py-2 text-sm font-extrabold text-white shadow-sm transition",
+                  manualUploadBusy || !manualCoreWasmFile ? "cursor-not-allowed bg-slate-300" : "bg-sky-500 hover:bg-sky-600",
+                ].join(" ")}
+              >
+                {manualUploadBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                <span>{tr("导入并缓存", "Import & Cache")}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2115,6 +2601,21 @@ export default function AudioPackGenerator() {
   const [ffmpegLoaded, setFfmpegLoaded] = useState<boolean>(snapshot.loaded);
   const [ffmpegRetryCount, setFfmpegRetryCount] = useState<number>(0);
   const [ffmpegGiveUp, setFfmpegGiveUp] = useState<boolean>(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [ffmpegForceOverlay, setFfmpegForceOverlay] = useState(false);
+  const [ffmpegLoadRequestId, setFfmpegLoadRequestId] = useState(0);
+  const [ffmpegManualUploadRequested, setFfmpegManualUploadRequested] = useState(false);
+  const [ffmpegAutoOpenManualUpload, setFfmpegAutoOpenManualUpload] = useState(false);
+  const [ffmpegCdnSelectionDone, setFfmpegCdnSelectionDone] = useState<boolean>(() => {
+    try {
+      const value = localStorage.getItem(FFMPEG_PREFERRED_CDN_KEY);
+      return value ? FFMPEG_CDN_BASES.includes(value as (typeof FFMPEG_CDN_BASES)[number]) : false;
+    } catch {
+      return false;
+    }
+  });
+  const [ffmpegCdnDialogOpen, setFfmpegCdnDialogOpen] = useState<boolean>(() => !ffmpegCdnSelectionDone);
+  const [ffmpegCoreCached, setFfmpegCoreCached] = useState<boolean>(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [meta, setMeta] = useState<PackMeta>({
     name: "",
@@ -2165,6 +2666,10 @@ export default function AudioPackGenerator() {
     width: number;
     height: number;
   } | null>(null);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
   const guideAnchorsRef = useRef<Record<GuideAnchorKey, HTMLElement | null>>({
     step1Icon: null,
     step1Name: null,
@@ -2216,13 +2721,13 @@ export default function AudioPackGenerator() {
       id,
       originalName,
       newName,
-      vanillaEvent,
+      vanillaEvents,
       status,
     }: {
       id: string;
       originalName: string;
       newName: string;
-      vanillaEvent: string;
+      vanillaEvents: VanillaEventMapping[];
       status: FileItem["status"];
     }): FileItem => ({
       id,
@@ -2231,7 +2736,7 @@ export default function AudioPackGenerator() {
       hash: id,
       newName,
       status,
-      vanillaEvent,
+      vanillaEvents,
       processedBlob: new Blob(),
     });
 
@@ -2240,21 +2745,21 @@ export default function AudioPackGenerator() {
         id: "guide-demo-bell",
         originalName: "bell.mp3",
         newName: "bell",
-        vanillaEvent: "minecraft:block.note_block.harp",
+        vanillaEvents: [{ event: "minecraft:block.note_block.harp", weight: 1, pitch: 1, volume: 1 }],
         status: "done",
       }),
       create({
         id: "guide-demo-click",
         originalName: "click.wav",
         newName: "click",
-        vanillaEvent: "",
+        vanillaEvents: [],
         status: "done",
       }),
       create({
         id: "guide-demo-boom",
         originalName: "boom.ogg",
         newName: "boom",
-        vanillaEvent: "",
+        vanillaEvents: [],
         status: "done",
       }),
     ];
@@ -2264,13 +2769,23 @@ export default function AudioPackGenerator() {
 
   const buildCommandSoundNames = (sourceFiles: FileItem[]) => {
     const key = normalizeKey(meta.key);
-    return sourceFiles.map((f) => {
+    const names: string[] = [];
+    for (const f of sourceFiles) {
       if (meta.modifyVanilla) {
-        const event = f.vanillaEvent.trim();
-        return event || `${key}.${f.newName}`;
+        const seen = new Set<string>();
+        for (const mapping of f.vanillaEvents ?? []) {
+          const ev = mapping.event.trim();
+          if (!ev || seen.has(ev)) continue;
+          seen.add(ev);
+          names.push(ev);
+        }
+        if (seen.size > 0) {
+          continue;
+        }
       }
-      return `${key}.${f.newName}`;
-    });
+      names.push(`${key}.${f.newName}`);
+    }
+    return names;
   };
 
   const pushConvertLog = (message: string, level: ConvertLogItem["level"] = "info") => {
@@ -2486,16 +3001,68 @@ export default function AudioPackGenerator() {
     };
   }, [meta.iconFile]);
 
+  const confirmFfmpegCdn = useCallback((base: (typeof FFMPEG_CDN_BASES)[number]) => {
+    ffmpeg.setPreferredCdn(base, { lock: true });
+    setFfmpegCdnSelectionDone(true);
+    setFfmpegCdnDialogOpen(false);
+    setFfmpegManualUploadRequested(false);
+    setFfmpegGiveUp(false);
+    setFfmpegForceOverlay(true);
+    setFfmpegLoadRequestId((prev) => prev + 1);
+  }, []);
+
   useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (typeof window === "undefined") return;
+      if (typeof caches === "undefined") return;
+      try {
+        const cache = await caches.open(FFMPEG_CORE_CACHE_NAME);
+        for (const base of FFMPEG_CDN_BASES) {
+          const wasmURL = `${base}/ffmpeg-core.wasm`;
+          const hit = await cache.match(wasmURL);
+          if (!hit) continue;
+          if (cancelled) return;
+          setFfmpegCoreCached(true);
+          ffmpeg.setPreferredCdn(base);
+          setFfmpegCdnSelectionDone(true);
+          setFfmpegCdnDialogOpen(false);
+          return;
+        }
+      } catch {
+        void 0;
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!ffmpegCdnSelectionDone) {
+      setFfmpegCdnDialogOpen(true);
+      return;
+    }
+
+    if (ffmpegManualUploadRequested) {
+      setFfmpegCdnDialogOpen(true);
+      return;
+    }
+
+    setFfmpegCdnDialogOpen(false);
+
     let cancelled = false;
     const maxRetries = 3;
 
     const runRetry = async (retryCount: number) => {
       setFfmpegRetryCount(retryCount);
+      setFfmpegForceOverlay(true);
       try {
         await ffmpeg.load();
         if (cancelled) return;
         setFfmpegGiveUp(false);
+        setFfmpegForceOverlay(false);
       } catch {
         if (cancelled) return;
         if (retryCount < maxRetries) {
@@ -2507,15 +3074,18 @@ export default function AudioPackGenerator() {
           return;
         }
         setFfmpegGiveUp(true);
+        setFfmpegForceOverlay(true);
       }
     };
 
     const runInitial = async () => {
       setFfmpegRetryCount(0);
+      setFfmpegForceOverlay(true);
       try {
         await ffmpeg.load();
         if (cancelled) return;
         setFfmpegGiveUp(false);
+        setFfmpegForceOverlay(false);
       } catch {
         if (cancelled) return;
         window.setTimeout(() => {
@@ -2530,7 +3100,7 @@ export default function AudioPackGenerator() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [ffmpegCdnSelectionDone, ffmpegLoadRequestId, ffmpegManualUploadRequested]);
 
   useEffect(() => {
     const offStatus = ffmpeg.onStatus(() => {
@@ -2541,7 +3111,7 @@ export default function AudioPackGenerator() {
     };
   }, []);
 
-  const overlayActive = !ffmpegLoaded;
+  const overlayActive = !ffmpegLoaded && (ffmpegForceOverlay || ffmpegGiveUp || !ffmpegCoreCached);
 
   useEffect(() => {
     const el = contentRef.current;
@@ -2992,7 +3562,7 @@ export default function AudioPackGenerator() {
           hash,
           newName,
           status: "pending",
-          vanillaEvent: "",
+          vanillaEvents: [],
           processedBlob: null,
         });
       }
@@ -3019,8 +3589,27 @@ export default function AudioPackGenerator() {
     setFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
-  const onUpdateVanillaEvent = (id: string, value: string) => {
-    setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, vanillaEvent: value } : f)));
+  const onUpdateVanillaEvents = (id: string, value: VanillaEventMapping[]) => {
+    const toNonNegInt = (n: number) => {
+      if (!Number.isFinite(n)) return 1;
+      const floored = Math.floor(n);
+      return floored < 0 ? 0 : floored;
+    };
+    const clamp01 = (n: number) => (Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 1);
+    const seen = new Set<string>();
+    const normalized: VanillaEventMapping[] = [];
+    for (const raw of value) {
+      const event = raw.event.trim();
+      if (!event || seen.has(event)) continue;
+      seen.add(event);
+      normalized.push({
+        event,
+        weight: toNonNegInt(raw.weight),
+        pitch: clamp01(raw.pitch),
+        volume: clamp01(raw.volume),
+      });
+    }
+    setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, vanillaEvents: normalized } : f)));
   };
 
   const onRenameFile = (id: string, value: string) => {
@@ -3312,7 +3901,7 @@ export default function AudioPackGenerator() {
 
       const soundsJson = buildJavaSoundsJson(
         key,
-        readyFiles.map((f) => ({ newName: f.newName, vanillaEvent: f.vanillaEvent })),
+        readyFiles.map((f) => ({ newName: f.newName, vanillaEvents: f.vanillaEvents })),
         meta.modifyVanilla
       );
 
@@ -3356,7 +3945,7 @@ export default function AudioPackGenerator() {
 
       const definitions = buildBedrockSoundDefinitions(
         key,
-        readyFiles.map((f) => ({ newName: f.newName, vanillaEvent: f.vanillaEvent })),
+        readyFiles.map((f) => ({ newName: f.newName, vanillaEvents: f.vanillaEvents })),
         meta.modifyVanilla
       );
       zip
@@ -3372,12 +3961,35 @@ export default function AudioPackGenerator() {
     <LangContext.Provider value={langContextValue}>
       <ThemeContext.Provider value={themeContextValue}>
         <div className="h-dvh overflow-hidden bg-slate-50 text-slate-900">
-      {!ffmpegLoaded ? (
-        <FfmpegBlockingOverlay
-          stage={ffmpegGiveUp ? "failed" : "loading"}
-          retryCount={ffmpegRetryCount}
-          maxRetries={3}
-        />
+      {hydrated && overlayActive ? (
+        ffmpegCdnDialogOpen ? (
+          <FfmpegCdnSelectOverlay
+            defaultBase={FFMPEG_CDN_BASES[0]}
+            bases={FFMPEG_CDN_BASES}
+            onConfirm={confirmFfmpegCdn}
+            onManualCacheReady={() => setFfmpegCoreCached(true)}
+            autoOpenManualUpload={ffmpegAutoOpenManualUpload}
+            onAutoOpenManualUploadConsumed={() => setFfmpegAutoOpenManualUpload(false)}
+          />
+        ) : (
+          <FfmpegBlockingOverlay
+            stage={ffmpegGiveUp ? "failed" : "loading"}
+            retryCount={ffmpegRetryCount}
+            maxRetries={3}
+            onOpenManualUpload={
+              ffmpegGiveUp
+                ? () => {
+                    ffmpeg.setPreferredCdnLock(false);
+                    setFfmpegManualUploadRequested(false);
+                    setFfmpegAutoOpenManualUpload(false);
+                    setFfmpegCdnDialogOpen(true);
+                    setFfmpegGiveUp(false);
+                    setFfmpegForceOverlay(true);
+                  }
+                : undefined
+            }
+          />
+        )
       ) : null}
       {(() => {
         if (!guideOpen) return null;
@@ -3725,12 +4337,13 @@ export default function AudioPackGenerator() {
                 >
                   <FileDropZone
                     guideDemo={guideOpen}
+                    platform={meta.platform}
                     modifyVanilla={meta.modifyVanilla}
                     files={files}
                     onAddFiles={onAddFiles}
                     onRemoveFile={onRemoveFile}
                     onRenameFile={onRenameFile}
-                    onUpdateVanillaEvent={onUpdateVanillaEvent}
+                    onUpdateVanillaEvents={onUpdateVanillaEvents}
                     onVanillaEventAnchor={(el) => {
                       if (!meta.modifyVanilla) return;
                       guideAnchorsRef.current.step2VanillaEvent = el;
@@ -4234,24 +4847,26 @@ export default function AudioPackGenerator() {
 
 function FileDropZone({
   guideDemo,
+  platform,
   modifyVanilla,
   files,
   onAddFiles,
   onRemoveFile,
   onRenameFile,
-  onUpdateVanillaEvent,
+  onUpdateVanillaEvents,
   onVanillaEventAnchor,
   vanillaEventOptions,
   vanillaEventLoading,
   vanillaEventLoadFailed,
 }: {
   guideDemo: boolean;
+  platform: PackPlatform;
   modifyVanilla: boolean;
   files: FileItem[];
   onAddFiles: (list: FileList | null) => void | Promise<void>;
   onRemoveFile: (id: string) => void;
   onRenameFile: (id: string, value: string) => string | null;
-  onUpdateVanillaEvent: (id: string, value: string) => void;
+  onUpdateVanillaEvents: (id: string, value: VanillaEventMapping[]) => void;
   onVanillaEventAnchor?: (el: HTMLElement | null) => void;
   vanillaEventOptions: VanillaEventOption[];
   vanillaEventLoading: boolean;
@@ -4270,10 +4885,15 @@ function FileDropZone({
   const [renameDialogError, setRenameDialogError] = useState<string | null>(null);
   const dialogInputRef = useRef<HTMLInputElement | null>(null);
   const lastActiveRef = useRef<HTMLElement | null>(null);
-  const [vanillaDialogOpen, setVanillaDialogOpen] = useState(false);
-  const [vanillaDialogFileId, setVanillaDialogFileId] = useState<string | null>(null);
-  const [vanillaDialogQuery, setVanillaDialogQuery] = useState("");
-  const vanillaDialogInputRef = useRef<HTMLInputElement | null>(null);
+  const [vanillaManagerOpen, setVanillaManagerOpen] = useState(false);
+  const [vanillaManagerFileId, setVanillaManagerFileId] = useState<string | null>(null);
+  const [vanillaManagerError, setVanillaManagerError] = useState<string | null>(null);
+  const [vanillaPickerOpen, setVanillaPickerOpen] = useState(false);
+  const [vanillaPickerMode, setVanillaPickerMode] = useState<"add" | "edit">("add");
+  const [vanillaPickerEditIndex, setVanillaPickerEditIndex] = useState<number | null>(null);
+  const [vanillaPickerQuery, setVanillaPickerQuery] = useState("");
+  const [vanillaPickerError, setVanillaPickerError] = useState<string | null>(null);
+  const vanillaPickerInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!renameDialogOpen) return;
@@ -4287,12 +4907,12 @@ function FileDropZone({
   }, [renameDialogOpen]);
 
   useEffect(() => {
-    if (!vanillaDialogOpen) return;
+    if (!vanillaPickerOpen) return;
     requestAnimationFrame(() => {
-      vanillaDialogInputRef.current?.focus();
-      vanillaDialogInputRef.current?.select();
+      vanillaPickerInputRef.current?.focus();
+      vanillaPickerInputRef.current?.select();
     });
-  }, [vanillaDialogOpen]);
+  }, [vanillaPickerOpen]);
 
   const vanillaEventOptionsForSearch = useMemo(() => {
     return vanillaEventOptions.map((item) => {
@@ -4302,13 +4922,11 @@ function FileDropZone({
     });
   }, [vanillaEventOptions]);
 
-  const normalizedVanillaQuery = vanillaDialogQuery.trim().toLowerCase();
-  const vanillaDialogMatches = useMemo(() => {
+  const normalizedVanillaQuery = vanillaPickerQuery.trim().toLowerCase();
+  const vanillaPickerMatches = useMemo(() => {
     if (!normalizedVanillaQuery) return vanillaEventOptionsForSearch;
-
     const parts = normalizedVanillaQuery.split(/\s+/).filter(Boolean);
-    const filtered = vanillaEventOptionsForSearch.filter((item) => parts.every((part) => item.searchText.includes(part)));
-    return filtered;
+    return vanillaEventOptionsForSearch.filter((item) => parts.every((part) => item.searchText.includes(part)));
   }, [normalizedVanillaQuery, vanillaEventOptionsForSearch]);
 
   const beginInlineEdit = (item: FileItem) => {
@@ -4354,25 +4972,35 @@ function FileDropZone({
     setRenameDialogError(null);
   };
 
-  const openVanillaDialog = (item: FileItem) => {
-    setVanillaDialogFileId(item.id);
-    setVanillaDialogQuery(item.vanillaEvent);
-    setVanillaDialogOpen(true);
+  const openVanillaManager = (item: FileItem) => {
+    setVanillaManagerFileId(item.id);
+    setVanillaManagerError(null);
+    setVanillaManagerOpen(true);
   };
 
-  const closeVanillaDialog = () => {
-    setVanillaDialogOpen(false);
-    setVanillaDialogFileId(null);
-    setVanillaDialogQuery("");
+  const closeVanillaManager = () => {
+    setVanillaPickerOpen(false);
+    setVanillaManagerOpen(false);
+    setVanillaManagerFileId(null);
+    setVanillaManagerError(null);
+    setVanillaPickerMode("add");
+    setVanillaPickerEditIndex(null);
+    setVanillaPickerQuery("");
+    setVanillaPickerError(null);
     requestAnimationFrame(() => {
       lastActiveRef.current?.focus();
     });
   };
 
-  const applyVanillaDialogValue = (value: string) => {
-    if (!vanillaDialogFileId) return;
-    onUpdateVanillaEvent(vanillaDialogFileId, value);
-    closeVanillaDialog();
+  const closeVanillaPicker = () => {
+    setVanillaPickerOpen(false);
+    setVanillaPickerMode("add");
+    setVanillaPickerEditIndex(null);
+    setVanillaPickerQuery("");
+    setVanillaPickerError(null);
+    requestAnimationFrame(() => {
+      lastActiveRef.current?.focus();
+    });
   };
 
   const submitRenameDialog = () => {
@@ -4390,7 +5018,189 @@ function FileDropZone({
   };
 
   const renameDialogItem = renameDialogId ? (files.find((f) => f.id === renameDialogId) ?? null) : null;
-  const vanillaDialogFile = vanillaDialogFileId ? (files.find((f) => f.id === vanillaDialogFileId) ?? null) : null;
+  const vanillaManagerFile = vanillaManagerFileId ? (files.find((f) => f.id === vanillaManagerFileId) ?? null) : null;
+  const vanillaManagerMappings = useMemo(() => {
+    const toNonNegInt = (value: number) => {
+      if (!Number.isFinite(value)) return 1;
+      const floored = Math.floor(value);
+      return floored < 0 ? 0 : floored;
+    };
+    const clamp01 = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1);
+    const seen = new Set<string>();
+    const result: VanillaEventMapping[] = [];
+    for (const raw of vanillaManagerFile?.vanillaEvents ?? []) {
+      const event = raw.event.trim();
+      if (!event || seen.has(event)) continue;
+      seen.add(event);
+      result.push({
+        event,
+        weight: toNonNegInt(raw.weight),
+        pitch: clamp01(raw.pitch),
+        volume: clamp01(raw.volume),
+      });
+    }
+    return result;
+  }, [vanillaManagerFile?.vanillaEvents]);
+  const vanillaManagerEventsSet = useMemo(
+    () => new Set(vanillaManagerMappings.map((m) => m.event)),
+    [vanillaManagerMappings]
+  );
+  const vanillaPickerCurrentValue =
+    vanillaPickerMode === "edit" && vanillaPickerEditIndex != null
+      ? (vanillaManagerMappings[vanillaPickerEditIndex]?.event ?? "")
+      : "";
+
+  const openVanillaPickerAdd = () => {
+    if (!vanillaManagerFileId) return;
+    setVanillaManagerError(null);
+    setVanillaPickerMode("add");
+    setVanillaPickerEditIndex(null);
+    setVanillaPickerQuery("");
+    setVanillaPickerError(null);
+    setVanillaPickerOpen(true);
+  };
+
+  const openVanillaPickerEdit = (index: number) => {
+    if (!vanillaManagerFileId) return;
+    setVanillaManagerError(null);
+    const current = vanillaManagerMappings[index]?.event ?? "";
+    setVanillaPickerMode("edit");
+    setVanillaPickerEditIndex(index);
+    setVanillaPickerQuery(current);
+    setVanillaPickerError(null);
+    setVanillaPickerOpen(true);
+  };
+
+  const removeVanillaEventAt = (index: number) => {
+    if (!vanillaManagerFileId) return;
+    const next = vanillaManagerMappings.filter((_, i) => i !== index);
+    onUpdateVanillaEvents(vanillaManagerFileId, next);
+  };
+
+  const isWeightTakenForEvent = (event: string, weight: number) => {
+    const key = event.trim();
+    if (!key) return false;
+    const w = Number.isFinite(weight) ? Math.floor(weight) : 1;
+    for (const f of files) {
+      if (f.id === vanillaManagerFileId) continue;
+      for (const mapping of f.vanillaEvents ?? []) {
+        if (mapping.event.trim() !== key) continue;
+        const other = Number.isFinite(mapping.weight) ? Math.floor(mapping.weight) : 1;
+        if (other === w) return true;
+      }
+    }
+    return false;
+  };
+
+  const pickAutoWeightForEvent = (event: string, preferred?: number) => {
+    const key = event.trim();
+    const used = new Set<number>();
+    if (!key) return 1;
+    for (const f of files) {
+      if (f.id === vanillaManagerFileId) continue;
+      for (const mapping of f.vanillaEvents ?? []) {
+        if (mapping.event.trim() !== key) continue;
+        const other = Number.isFinite(mapping.weight) ? Math.floor(mapping.weight) : 1;
+        used.add(other);
+      }
+    }
+    const prefer = Number.isFinite(preferred) ? Math.floor(preferred!) : 1;
+    if (prefer >= 0 && !used.has(prefer)) return prefer;
+    for (let w = 1; ; w += 1) {
+      if (!used.has(w)) return w;
+    }
+  };
+
+  const applyVanillaPickerValue = (value: string) => {
+    if (!vanillaManagerFileId) return;
+    const normalized = value.trim();
+
+    if (vanillaPickerMode === "add") {
+      if (!normalized) {
+        closeVanillaPicker();
+        return;
+      }
+      if (vanillaManagerEventsSet.has(normalized)) {
+        setVanillaPickerError(tr("该事件已添加，请勿重复添加。", "Event already added. Please avoid duplicates."));
+        requestAnimationFrame(() => {
+          vanillaPickerInputRef.current?.focus();
+          vanillaPickerInputRef.current?.select();
+        });
+        return;
+      }
+      setVanillaManagerError(null);
+      onUpdateVanillaEvents(vanillaManagerFileId, [
+        ...vanillaManagerMappings,
+        { event: normalized, weight: pickAutoWeightForEvent(normalized, 1), pitch: 1, volume: 1 },
+      ]);
+      closeVanillaPicker();
+      return;
+    }
+
+    if (vanillaPickerEditIndex == null || vanillaPickerEditIndex < 0) {
+      closeVanillaPicker();
+      return;
+    }
+
+    if (!normalized) {
+      removeVanillaEventAt(vanillaPickerEditIndex);
+      closeVanillaPicker();
+      return;
+    }
+
+    if (vanillaManagerEventsSet.has(normalized) && normalized !== vanillaPickerCurrentValue) {
+      setVanillaPickerError(tr("该事件已存在，请选择其他事件。", "Event already exists. Please choose another one."));
+      requestAnimationFrame(() => {
+        vanillaPickerInputRef.current?.focus();
+        vanillaPickerInputRef.current?.select();
+      });
+      return;
+    }
+
+    const current = vanillaManagerMappings[vanillaPickerEditIndex];
+    const nextWeight =
+      current && normalized !== current.event && isWeightTakenForEvent(normalized, current.weight)
+        ? pickAutoWeightForEvent(normalized, 1)
+        : (current?.weight ?? 1);
+    setVanillaManagerError(null);
+    const next = vanillaManagerMappings.map((m, idx) =>
+      idx === vanillaPickerEditIndex ? { ...m, event: normalized, weight: nextWeight } : m
+    );
+    onUpdateVanillaEvents(vanillaManagerFileId, next);
+    closeVanillaPicker();
+  };
+
+  const normalizeWeight = (raw: string) => {
+    if (!raw.trim()) return 1;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return 1;
+    const floored = Math.floor(n);
+    return floored < 0 ? 0 : floored;
+  };
+
+  const normalize01 = (raw: string) => {
+    if (!raw.trim()) return 0;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return 1;
+    return Math.max(0, Math.min(1, n));
+  };
+
+  const updateVanillaMappingAt = (index: number, patch: Partial<VanillaEventMapping>) => {
+    if (!vanillaManagerFileId) return;
+    if (patch.weight != null) {
+      const current = vanillaManagerMappings[index];
+      if (current && isWeightTakenForEvent(current.event, patch.weight)) {
+        const w = Math.floor(patch.weight);
+        setVanillaManagerError(
+          tr(`该事件的权重不能重复（已被其他音频占用：${w}）。`, `Weight must be unique for this event (already used: ${w}).`)
+        );
+        return;
+      }
+    }
+    setVanillaManagerError(null);
+    const next = vanillaManagerMappings.map((m, idx) => (idx === index ? { ...m, ...patch } : m));
+    onUpdateVanillaEvents(vanillaManagerFileId, next);
+  };
 
   return (
     <div
@@ -4442,12 +5252,12 @@ function FileDropZone({
                     {
                       originalName: "demo_song.mp3",
                       newName: "song1",
-                      vanillaEvent: "minecraft:entity.player.hurt",
+                      vanillaEvents: [{ event: "minecraft:entity.player.hurt", weight: 1, pitch: 1, volume: 1 }],
                     },
                     {
                       originalName: "bgm.ogg",
                       newName: "bgm1",
-                      vanillaEvent: "minecraft:music.overworld",
+                      vanillaEvents: [{ event: "minecraft:music.overworld", weight: 1, pitch: 1, volume: 1 }],
                     },
                   ].map((item, idx) => (
                     <div
@@ -4483,7 +5293,7 @@ function FileDropZone({
                                 : "留空则不替换"
                           }
                           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
-                          value={item.vanillaEvent}
+                          value={item.vanillaEvents[0]?.event ?? ""}
                         />
                         <div className="mt-1 text-[11px] font-bold text-slate-400">
                           {vanillaEventLoading
@@ -4616,17 +5426,17 @@ function FileDropZone({
                       type="button"
                       onClick={(e) => {
                         lastActiveRef.current = e.currentTarget;
-                        openVanillaDialog(f);
+                        openVanillaManager(f);
                       }}
                       className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
                     >
-                      {f.vanillaEvent
-                        ? f.vanillaEvent
+                      {f.vanillaEvents.length > 0
+                        ? `${f.vanillaEvents[0]?.event ?? ""}${f.vanillaEvents.length > 1 ? ` +${f.vanillaEvents.length - 1}` : ""}`
                         : vanillaEventLoading
                           ? "正在加载事件列表..."
                           : vanillaEventLoadFailed
                             ? "事件列表加载失败，请刷新页面"
-                            : "点此选择/搜索事件（留空则不替换）"}
+                            : "点此管理事件（可添加多个）"}
                     </button>
                     <div className="mt-1 text-[11px] font-bold text-slate-400">
                       {vanillaEventLoading
@@ -4791,16 +5601,16 @@ function FileDropZone({
         </div>
       ) : null}
 
-      {vanillaDialogOpen ? (
+      {vanillaManagerOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closeVanillaDialog();
+            if (e.target === e.currentTarget) closeVanillaManager();
           }}
           onKeyDownCapture={(e) => {
             if (e.key === "Escape") {
               e.preventDefault();
-              closeVanillaDialog();
+              closeVanillaManager();
             }
           }}
         >
@@ -4812,15 +5622,196 @@ function FileDropZone({
           >
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
               <div className="min-w-0">
-                <div className="text-base font-extrabold text-slate-800">选择原版声音事件</div>
-                <div className="mt-1 truncate text-sm text-slate-500" title={vanillaDialogFile?.originalName ?? ""}>
-                  {vanillaDialogFile?.originalName ?? ""}
+                <div className="text-base font-extrabold text-slate-800">{tr("事件管理", "Event Manager")}</div>
+                <div className="mt-1 truncate text-sm text-slate-500" title={vanillaManagerFile?.originalName ?? ""}>
+                  {vanillaManagerFile?.originalName ?? ""}
+                </div>
+                <div className="mt-2 text-xs font-bold text-slate-400">
+                  {tr("参数说明请查看：", "See docs:")}
+                  {platform === "java" ? (
+                    <a
+                      className="ml-1 text-sky-600 underline underline-offset-2 hover:text-sky-500"
+                      href="https://zh.minecraft.wiki/w/Java%E7%89%88%E5%A3%B0%E9%9F%B3%E4%BA%8B%E4%BB%B6"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {tr("Java版声音事件", "Java sound events")}
+                    </a>
+                  ) : (
+                    <a
+                      className="ml-1 text-sky-600 underline underline-offset-2 hover:text-sky-500"
+                      href="https://zh.minecraft.wiki/w/%E5%9F%BA%E5%B2%A9%E7%89%88%E5%A3%B0%E9%9F%B3%E4%BA%8B%E4%BB%B6"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {tr("基岩版声音事件", "Bedrock sound events")}
+                    </a>
+                  )}
+                </div>
+                <div className="mt-1 text-[11px] font-bold text-slate-400">
+                  {tr(
+                    "权重 ≥ 0（默认 1，同事件需唯一）；音高/音量 范围 0-1（默认 1）；",
+                    "Weight ≥ 0 (default 1, unique per event); pitch/volume range 0-1 (default 1);"
+                  )}
+                </div>
+                {vanillaManagerError ? (
+                  <div className="mt-2 text-xs font-bold text-red-600">{vanillaManagerError}</div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                aria-label={tr("关闭", "Close")}
+                onClick={closeVanillaManager}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <button
+                type="button"
+                onClick={() => {
+                  lastActiveRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                  openVanillaPickerAdd();
+                }}
+                className="inline-flex w-full items-center justify-center rounded-2xl bg-sky-400 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-sky-300"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                {tr("添加声音事件", "Add Sound Event")}
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+              {vanillaManagerMappings.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-500">
+                  {tr("暂未添加事件（留空则不替换）。", "No events added (leave empty to skip replacing).")}
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  {vanillaManagerMappings.map((mapping, idx) => {
+                    const zh = translateSoundEventKeyZh(mapping.event);
+                    return (
+                      <div
+                        key={`${mapping.event}-${idx}`}
+                        className="rounded-2xl border border-slate-200 bg-white px-3 py-2"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-extrabold text-slate-800" title={mapping.event}>
+                              {mapping.event}
+                            </div>
+                            <div className="mt-0.5 truncate text-[11px] font-bold text-slate-400" title={zh}>
+                              {zh}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                lastActiveRef.current = e.currentTarget;
+                                openVanillaPickerEdit(idx);
+                              }}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
+                              aria-label={tr("修改", "Edit")}
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeVanillaEventAt(idx)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                              aria-label={tr("删除", "Delete")}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          <div className="min-w-0">
+                            <div className="mb-1 text-[11px] font-extrabold text-slate-400">{tr("权重", "Weight")}</div>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={0}
+                              step="1"
+                              value={String(mapping.weight)}
+                              onChange={(e) => updateVanillaMappingAt(idx, { weight: normalizeWeight(e.target.value) })}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-bold text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="mb-1 text-[11px] font-extrabold text-slate-400">{tr("音高", "Pitch")}</div>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              max={1}
+                              step="0.01"
+                              value={String(mapping.pitch)}
+                              onChange={(e) => updateVanillaMappingAt(idx, { pitch: normalize01(e.target.value) })}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-bold text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="mb-1 text-[11px] font-extrabold text-slate-400">{tr("音量", "Volume")}</div>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              max={1}
+                              step="0.01"
+                              value={String(mapping.volume)}
+                              onChange={(e) => updateVanillaMappingAt(idx, { volume: normalize01(e.target.value) })}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-sm font-bold text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {vanillaPickerOpen ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeVanillaPicker();
+          }}
+          onKeyDownCapture={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              closeVanillaPicker();
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
+            className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl outline-none"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+              <div className="min-w-0">
+                <div className="text-base font-extrabold text-slate-800">
+                  {vanillaPickerMode === "add"
+                    ? tr("选择原版声音事件", "Choose Vanilla Sound Event")
+                    : tr("修改原版声音事件", "Edit Vanilla Sound Event")}
+                </div>
+                <div className="mt-1 truncate text-sm text-slate-500" title={vanillaManagerFile?.originalName ?? ""}>
+                  {vanillaManagerFile?.originalName ?? ""}
                 </div>
               </div>
               <button
                 type="button"
-                aria-label="关闭"
-                onClick={closeVanillaDialog}
+                aria-label={tr("关闭", "Close")}
+                onClick={closeVanillaPicker}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
               >
                 <X className="h-4 w-4" />
@@ -4830,24 +5821,28 @@ function FileDropZone({
             <div className="p-5">
               <div className="relative">
                 <input
-                  ref={vanillaDialogInputRef}
-                  value={vanillaDialogQuery}
-                  onChange={(e) => setVanillaDialogQuery(e.target.value)}
+                  ref={vanillaPickerInputRef}
+                  value={vanillaPickerQuery}
+                  onChange={(e) => {
+                    setVanillaPickerError(null);
+                    setVanillaPickerQuery(e.target.value);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key !== "Enter") return;
                     e.preventDefault();
-                    applyVanillaDialogValue(vanillaDialogQuery.trim());
+                    applyVanillaPickerValue(vanillaPickerQuery);
                   }}
                   className="w-full rounded-2xl border-2 border-transparent bg-slate-50 py-3 pl-4 pr-11 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(224,242,254,1)]"
-                  placeholder="搜索中/英关键词"
+                  placeholder={tr("搜索中/英关键词", "Search (CN/EN keywords)")}
                 />
-                {vanillaDialogQuery ? (
+                {vanillaPickerQuery ? (
                   <button
                     type="button"
-                    aria-label="清空输入"
+                    aria-label={tr("清空输入", "Clear")}
                     onClick={() => {
-                      setVanillaDialogQuery("");
-                      requestAnimationFrame(() => vanillaDialogInputRef.current?.focus());
+                      setVanillaPickerError(null);
+                      setVanillaPickerQuery("");
+                      requestAnimationFrame(() => vanillaPickerInputRef.current?.focus());
                     }}
                     className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
                   >
@@ -4855,50 +5850,77 @@ function FileDropZone({
                   </button>
                 ) : null}
               </div>
+              {vanillaPickerError ? <div className="mt-2 text-sm font-bold text-red-600">{vanillaPickerError}</div> : null}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
-              <button
-                type="button"
-                onClick={() => applyVanillaDialogValue("")}
-                className="mb-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left text-sm font-bold text-slate-700 transition hover:border-sky-300 hover:bg-sky-50"
-              >
-                留空（不替换）
-              </button>
+              {vanillaPickerMode === "add" ? (
+                <button
+                  type="button"
+                  onClick={() => applyVanillaPickerValue("")}
+                  className="mb-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left text-sm font-bold text-slate-700 transition hover:border-sky-300 hover:bg-sky-50"
+                >
+                  {tr("取消添加", "Cancel Add")}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => applyVanillaPickerValue("")}
+                  className="mb-2 w-full rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-left text-sm font-bold text-red-700 transition hover:bg-red-100"
+                >
+                  {tr("删除该事件", "Delete This Event")}
+                </button>
+              )}
 
               {vanillaEventLoading ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-500">
-                  正在加载事件列表...
+                  {tr("正在加载事件列表...", "Loading event list...")}
                 </div>
               ) : vanillaEventLoadFailed ? (
                 <div className="rounded-2xl border border-red-200 bg-red-50 px-3 py-3 text-sm font-bold text-red-600">
-                  事件列表加载失败，你仍可在上方输入框手动填写并回车确认。
+                  {tr(
+                    "事件列表加载失败，你仍可在上方输入框手动填写并回车确认。",
+                    "Failed to load event list. You can still type manually above and press Enter."
+                  )}
                 </div>
               ) : vanillaEventOptions.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-500">
-                  事件列表为空。
+                  {tr("事件列表为空。", "Event list is empty.")}
                 </div>
               ) : (
                 <>
                   <div className="mb-2 text-[11px] font-bold text-slate-400">
-                    匹配 {normalizedVanillaQuery ? "结果" : "事件"}：共 {vanillaDialogMatches.length} 条（总 {vanillaEventOptions.length} 条）
+                    {tr("匹配", "Matches")} {normalizedVanillaQuery ? tr("结果", "results") : tr("事件", "events")}：{tr("共", "Total")}{" "}
+                    {vanillaPickerMatches.length} {tr("条", "")}（{tr("总", "of")} {vanillaEventOptions.length} {tr("条", "")}）
                   </div>
                   <div className="grid gap-2">
-                    {vanillaDialogMatches.map((item) => (
-                      <button
-                        key={item.key}
-                        type="button"
-                        onClick={() => applyVanillaDialogValue(item.key)}
-                        className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left transition hover:border-sky-300 hover:bg-sky-50"
-                      >
-                        <div className="truncate text-sm font-bold text-slate-800" title={item.key}>
-                          {item.key}
-                        </div>
-                        <div className="mt-0.5 text-[11px] font-bold text-slate-400" title={item.zh}>
-                          {item.zh}
-                        </div>
-                      </button>
-                    ))}
+                    {vanillaPickerMatches.map((item) => {
+                      const disabled = vanillaManagerEventsSet.has(item.key) && item.key !== vanillaPickerCurrentValue;
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => applyVanillaPickerValue(item.key)}
+                          className={[
+                            "w-full rounded-2xl border px-3 py-2 text-left transition",
+                            disabled
+                              ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
+                              : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50",
+                          ].join(" ")}
+                        >
+                          <div className="truncate text-sm font-bold" title={item.key}>
+                            {item.key}
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] font-bold text-slate-400" title={item.zh}>
+                            {item.zh}
+                          </div>
+                          {disabled ? (
+                            <div className="mt-1 text-[11px] font-extrabold text-slate-400">{tr("已添加", "Added")}</div>
+                          ) : null}
+                        </button>
+                      );
+                    })}
                   </div>
                 </>
               )}
