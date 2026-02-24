@@ -5,6 +5,7 @@
     "": {
       "name": "app",
       "dependencies": {
+        "@phosphor-icons/vue": "^2.2.1",
         "@tailwindcss/vite": "^4.1.18",
         "@types/tcp-port-used": "^1.0.4",
         "child_process": "^1.0.2",
@@ -133,6 +134,8 @@
     "@malept/cross-spawn-promise": ["@malept/cross-spawn-promise@1.1.1", "https://registry.npmmirror.com/@malept/cross-spawn-promise/-/cross-spawn-promise-1.1.1.tgz", { "dependencies": { "cross-spawn": "^7.0.1" } }, "sha512-RTBGWL5FWQcg9orDOCcp4LvItNzUPcyEU9bwaeJX0rJ1IQxzucC48Y0/sQLp/g6t99IQgAlGIaesJS+gTn7tVQ=="],
 
     "@malept/flatpak-bundler": ["@malept/flatpak-bundler@0.4.0", "https://registry.npmmirror.com/@malept/flatpak-bundler/-/flatpak-bundler-0.4.0.tgz", { "dependencies": { "debug": "^4.1.1", "fs-extra": "^9.0.0", "lodash": "^4.17.15", "tmp-promise": "^3.0.2" } }, "sha512-9QOtNffcOF/c1seMCDnjckb3R9WHcG34tky+FHpNKKCW0wc/scYLwMtO+ptyGUfMW0/b/n4qRiALlaFHc9Oj7Q=="],
+
+    "@phosphor-icons/vue": ["@phosphor-icons/vue@2.2.1", "https://registry.npmmirror.com/@phosphor-icons/vue/-/vue-2.2.1.tgz", { "peerDependencies": { "vue": ">=3.2.39" } }, "sha512-3RNg1utc2Z5RwPKWFkW3eXI/0BfQAwXgtFxPUPeSzi55jGYUq16b+UqcgbKLazWFlwg5R92OCLKjDiJjeiJcnA=="],
 
     "@pkgjs/parseargs": ["@pkgjs/parseargs@0.11.0", "https://registry.npmmirror.com/@pkgjs/parseargs/-/parseargs-0.11.0.tgz", {}, "sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg=="],
 

@@ -4,7 +4,17 @@
 
 :root {
   --ease-spring: cubic-bezier(0.4, 0.0, 0.2, 1);
+  --font-main:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "PingFang SC",
+    "Helvetica Neue",
+    "Segoe UI",
+    "Microsoft YaHei",
+    sans-serif;
 }
+
 
 body {
   margin: 0;
@@ -13,6 +23,11 @@ body {
   color: #1E293B;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+
+  font-family: var(--font-main) !important;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.6;
 }
 
 button:hover {

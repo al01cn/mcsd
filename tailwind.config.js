@@ -7,8 +7,24 @@ export default {
     theme: {
         extend: {
             fontFamily: {
-                sans: ['Nunito', 'sans-serif'],
-                mono: ['JetBrains Mono', 'monospace'],
+                sans: ["Inter",
+                    "SF Pro Display",
+                    "BlinkMacSystemFont",
+                    "Segoe UI",
+                    "PingFang SC",
+                    "Hiragino Sans GB",
+                    "Microsoft YaHei",
+                    "Helvetica Neue",
+                    "Arial",],
+                mono: ["Inter",
+                    "SF Pro Display",
+                    "BlinkMacSystemFont",
+                    "Segoe UI",
+                    "PingFang SC",
+                    "Hiragino Sans GB",
+                    "Microsoft YaHei",
+                    "Helvetica Neue",
+                    "Arial"],
             },
             colors: {
                 primary: { DEFAULT: '#4DB7FF', hover: '#66C5FF', active: '#1FA4FF', light: '#E0F2FE' },

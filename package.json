@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@phosphor-icons/vue": "^2.2.1",
     "@tailwindcss/vite": "^4.1.18",
     "@types/tcp-port-used": "^1.0.4",
     "child_process": "^1.0.2",
