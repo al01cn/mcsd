@@ -1,4 +1,4 @@
-import type { FileItem, PackMeta } from "./types";
+import type { FileItem, PackMeta, SubtitleContext } from "./types";
 import JSZip from "jszip";
 import { DEFAULT_KEY } from "./utils";
 
@@ -51,8 +51,15 @@ export function buildJavaPackMcmetaText(packFormatRaw: string, description: stri
 export function buildJavaSoundsJson(
   key: string,
   files: Array<Pick<FileItem, "id" | "newName" | "vanillaEvents">>,
-  modifyVanilla: boolean
+  modifyVanilla: boolean,
+  subtitles?: SubtitleContext
 ) {
+  const isDefaultNumber = (value: number) => Number.isFinite(value) && value === 1;
+  const pickWeight = (value: number) =>
+    Number.isFinite(value) && value > 0 && !isDefaultNumber(value) ? { weight: value } : null;
+  const pickPitch = (value: number) => (Number.isFinite(value) && !isDefaultNumber(value) ? { pitch: value } : null);
+  const pickVolume = (value: number) => (Number.isFinite(value) && !isDefaultNumber(value) ? { volume: value } : null);
+
   const soundsJson: Record<string, unknown> = {};
   for (const f of files) {
     const soundPath = `${key}/${f.newName}`;
@@ -68,21 +75,23 @@ export function buildJavaSoundsJson(
           | {
               replace?: boolean;
               sounds?: Array<{ name: string; stream?: boolean; weight?: number; pitch?: number; volume?: number }>;
+              subtitle?: string;
             }
           | undefined;
         const sounds = Array.isArray(existing?.sounds) ? [...existing.sounds] : [];
         sounds.push(
           [
             { name: `${soundPath}`, stream: true },
-            Number.isFinite(mapping.weight) && mapping.weight > 0 ? { weight: mapping.weight } : null,
-            Number.isFinite(mapping.pitch) ? { pitch: mapping.pitch } : null,
-            Number.isFinite(mapping.volume) ? { volume: mapping.volume } : null,
+            pickWeight(mapping.weight),
+            pickPitch(mapping.pitch),
+            pickVolume(mapping.volume),
           ].reduce((acc, part) => (part ? { ...acc, ...part } : acc), {} as Record<string, unknown>) as any
         );
-        
+        const subtitle = subtitles?.byEventKey?.[eventKey]?.trim();
         soundsJson[eventKey] = {
           replace: true,
           sounds,
+          ...(existing?.subtitle ? { subtitle: existing.subtitle } : subtitle ? { subtitle } : {}),
         };
       }
       continue;
@@ -90,13 +99,14 @@ export function buildJavaSoundsJson(
 
     const customKey = `${key}.${f.newName}`;
     const existing = soundsJson[customKey] as
-      | { sounds?: Array<{ name: string; stream?: boolean }> }
+      | { sounds?: Array<{ name: string; stream?: boolean }>; subtitle?: string }
       | undefined;
     const sounds = Array.isArray(existing?.sounds) ? [...existing.sounds] : [];
     sounds.push({ name: `${soundPath}`, stream: true });
-    
+    const subtitle = subtitles?.customByFileId?.[f.id]?.trim();
     soundsJson[customKey] = {
       sounds,
+      ...(existing?.subtitle ? { subtitle: existing.subtitle } : subtitle ? { subtitle } : {}),
     };
   }
   return soundsJson;
@@ -105,8 +115,15 @@ export function buildJavaSoundsJson(
 export function buildBedrockSoundDefinitions(
   key: string,
   files: Array<Pick<FileItem, "id" | "newName" | "vanillaEvents">>,
-  modifyVanilla: boolean
+  modifyVanilla: boolean,
+  subtitles?: SubtitleContext
 ) {
+  const isDefaultNumber = (value: number) => Number.isFinite(value) && value === 1;
+  const pickWeight = (value: number) =>
+    Number.isFinite(value) && value > 0 && !isDefaultNumber(value) ? { weight: value } : null;
+  const pickPitch = (value: number) => (Number.isFinite(value) && !isDefaultNumber(value) ? { pitch: value } : null);
+  const pickVolume = (value: number) => (Number.isFinite(value) && !isDefaultNumber(value) ? { volume: value } : null);
+
   const definitions: Record<string, unknown> = {
     format_version: "1.14.0",
     sound_definitions: {},
@@ -138,25 +155,30 @@ export function buildBedrockSoundDefinitions(
               ...existing.sounds,
               [
                 { name: soundValue },
-                Number.isFinite(mapping.volume) ? { volume: mapping.volume } : null,
-                Number.isFinite(mapping.pitch) ? { pitch: mapping.pitch } : null,
-                Number.isFinite(mapping.weight) && mapping.weight > 0 ? { weight: mapping.weight } : null,
+                pickVolume(mapping.volume),
+                pickPitch(mapping.pitch),
+                pickWeight(mapping.weight),
               ].reduce((acc, part) => (part ? { ...acc, ...part } : acc), {} as Record<string, unknown>) as any,
             ];
           }
+          const subtitle = subtitles?.byEventKey?.[eventKey]?.trim();
+          if (subtitle && !(existing as any).subtitle) {
+            (existing as any).subtitle = subtitle;
+          }
           continue;
         }
-        
+        const subtitle = subtitles?.byEventKey?.[eventKey]?.trim();
         soundDefinitions[eventKey] = {
           category: "record",
           sounds: [
             [
               { name: soundValue },
-              Number.isFinite(mapping.volume) ? { volume: mapping.volume } : null,
-              Number.isFinite(mapping.pitch) ? { pitch: mapping.pitch } : null,
-              Number.isFinite(mapping.weight) && mapping.weight > 0 ? { weight: mapping.weight } : null,
+              pickVolume(mapping.volume),
+              pickPitch(mapping.pitch),
+              pickWeight(mapping.weight),
             ].reduce((acc, part) => (part ? { ...acc, ...part } : acc), {} as Record<string, unknown>) as any,
           ],
+          ...(subtitle ? { subtitle } : {}),
         };
       }
       continue;
@@ -166,12 +188,17 @@ export function buildBedrockSoundDefinitions(
     const existing = soundDefinitions[customKey];
     if (existing) {
       if (!existing.sounds.includes(soundValue)) existing.sounds = [...existing.sounds, soundValue];
+      const subtitle = subtitles?.customByFileId?.[f.id]?.trim();
+      if (subtitle && !(existing as any).subtitle) {
+        (existing as any).subtitle = subtitle;
+      }
       continue;
     }
-    
+    const subtitle = subtitles?.customByFileId?.[f.id]?.trim();
     soundDefinitions[customKey] = {
       category: "record",
       sounds: [soundValue],
+      ...(subtitle ? { subtitle } : {}),
     };
   }
 

@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { UploadCloud, Music, Trash2, Settings, Plus, X, Search, Check, AlertTriangle, ArrowLeft } from 'lucide-vue-next';
-import type { FileItem, PackMeta, VanillaEventMapping } from '../../lib/types';
-import { processFileName, getAudioBaseName, buildId, formatBytes, collectDuplicateFileNameIds } from '../../lib/utils';
+import type { FileItem, PackMeta, SubtitleContext, VanillaEventMapping } from '../../lib/types';
+import { processFileName, getAudioBaseName, buildId, formatBytes, collectDuplicateFileNameIds, normalizeKey } from '../../lib/utils';
 import * as soundsMod from '../../lib/sounds';
 import { buildSoundEventSearchText, fuzzyMatchSoundEventKey, translateSoundEventKeyZh } from '../../lib/SoundsTranslate';
 
 const props = defineProps<{
   files: FileItem[];
   meta: PackMeta;
+  subtitles: SubtitleContext;
 }>();
 
 const emit = defineEmits<{
   (e: 'update:files', value: FileItem[]): void;
+  (e: 'update:subtitles', value: SubtitleContext): void;
   (e: 'request-process'): void;
   (e: 'prev'): void;
 }>();
@@ -24,8 +26,15 @@ const editingFileId = ref<string | null>(null);
 const eventEditorSearch = ref('');
 const eventEditorSelection = ref<VanillaEventMapping[]>([]);
 
+const subtitleDialogOpen = ref(false);
+const subtitleDialogQuery = ref('');
+
 const duplicateIds = computed(() => collectDuplicateFileNameIds(props.files));
 const selectedEventSet = computed(() => new Set(eventEditorSelection.value.map((e) => e.event)));
+
+type SubtitleItem =
+  | { kind: 'event'; eventKey: string; fileIds: string[]; searchText: string }
+  | { kind: 'custom'; eventKey: string; fileId: string; searchText: string };
 
 const vanillaEventKeys = computed(() => {
   if (props.meta.platform === 'java') {
@@ -106,6 +115,102 @@ const filteredEventKeys = computed(() => {
   return scored.slice(0, 100).map((x) => x.key);
 });
 
+const subtitleDialogFileById = computed(() => new Map(props.files.map((f) => [f.id, f] as const)));
+
+const subtitleDialogItems = computed<SubtitleItem[]>(() => {
+  const key = normalizeKey(props.meta.key);
+  const fileById = subtitleDialogFileById.value;
+  const eventToFileIds = new Map<string, string[]>();
+  const customFileIds: string[] = [];
+
+  for (const f of props.files) {
+    const mappings = props.meta.modifyVanilla ? (f.vanillaEvents ?? []) : [];
+    if (mappings.length > 0) {
+      for (const mapping of mappings) {
+        const eventKey = mapping.event.trim();
+        if (!eventKey) continue;
+        const existing = eventToFileIds.get(eventKey);
+        if (existing) existing.push(f.id);
+        else eventToFileIds.set(eventKey, [f.id]);
+      }
+      continue;
+    }
+    customFileIds.push(f.id);
+  }
+
+  const items: SubtitleItem[] = [];
+  for (const [eventKey, fileIds] of eventToFileIds.entries()) {
+    const first = fileById.get(fileIds[0] ?? '');
+    const names = first ? `${first.originalName} ${first.newName}` : '';
+    items.push({
+      kind: 'event',
+      eventKey,
+      fileIds,
+      searchText: `${eventKey} ${names} ${fileIds.length}`.toLowerCase(),
+    });
+  }
+
+  for (const fileId of customFileIds) {
+    const f = fileById.get(fileId);
+    const eventKey = f ? `${key}.${f.newName}` : `${key}.unknown`;
+    const names = f ? `${f.originalName} ${f.newName}` : '';
+    items.push({
+      kind: 'custom',
+      eventKey,
+      fileId,
+      searchText: `${eventKey} ${names}`.toLowerCase(),
+    });
+  }
+
+  items.sort((a, b) => {
+    if (a.eventKey < b.eventKey) return -1;
+    if (a.eventKey > b.eventKey) return 1;
+    return a.kind === 'event' && b.kind === 'custom' ? -1 : a.kind === 'custom' && b.kind === 'event' ? 1 : 0;
+  });
+
+  return items;
+});
+
+const subtitleDialogMatches = computed(() => {
+  const q = subtitleDialogQuery.value.trim().toLowerCase();
+  if (!q) return subtitleDialogItems.value;
+  return subtitleDialogItems.value.filter((item) => item.searchText.includes(q));
+});
+
+const getCustomDefaultSubtitle = (fileId: string) => {
+  const f = subtitleDialogFileById.value.get(fileId);
+  const base = f ? getAudioBaseName(f.originalName) || f.newName : '';
+  return base ? `音频：${base}` : '音频：unknown';
+};
+
+const openSubtitleDialog = () => {
+  if (props.files.length === 0) return;
+  const prev = props.subtitles;
+  const nextCustom: Record<string, string> = { ...(prev.customByFileId ?? {}) };
+  let changed = false;
+
+  for (const f of props.files) {
+    const existing = typeof nextCustom[f.id] === 'string' ? nextCustom[f.id] : '';
+    if (existing.trim()) continue;
+    const base = getAudioBaseName(f.originalName) || f.newName;
+    nextCustom[f.id] = `音频：${base}`;
+    changed = true;
+  }
+
+  if (changed) emit('update:subtitles', { customByFileId: nextCustom, byEventKey: { ...(prev.byEventKey ?? {}) } });
+  subtitleDialogQuery.value = '';
+  subtitleDialogOpen.value = true;
+};
+
+const closeSubtitleDialog = () => {
+  subtitleDialogOpen.value = false;
+  subtitleDialogQuery.value = '';
+};
+
+const updateSubtitles = (next: SubtitleContext) => {
+  emit('update:subtitles', next);
+};
+
 const triggerUpload = () => {
   fileInput.value?.click();
 };
@@ -137,13 +242,82 @@ const handleFiles = (fileList: FileList | null) => {
   if (fileInput.value) fileInput.value.value = '';
 };
 
+const pruneCustomSubtitles = (nextFiles: FileItem[], prev: SubtitleContext): SubtitleContext => {
+  const keep = new Set(nextFiles.map((f) => f.id));
+  const nextCustom: Record<string, string> = {};
+  for (const [k, v] of Object.entries(prev.customByFileId ?? {})) {
+    if (keep.has(k)) nextCustom[k] = v;
+  }
+  return { customByFileId: nextCustom, byEventKey: { ...(prev.byEventKey ?? {}) } };
+};
+
 const removeFile = (id: string) => {
-  emit('update:files', props.files.filter(f => f.id !== id));
+  const nextFiles = props.files.filter((f) => f.id !== id);
+  emit('update:files', nextFiles);
+  updateSubtitles(pruneCustomSubtitles(nextFiles, props.subtitles));
 };
 
 const updateFile = (id: string, updates: Partial<FileItem>) => {
   const newFiles = props.files.map(f => f.id === id ? { ...f, ...updates } : f);
   emit('update:files', newFiles);
+};
+
+const clearFiles = () => {
+  emit('update:files', []);
+  updateSubtitles({ customByFileId: {}, byEventKey: { ...(props.subtitles.byEventKey ?? {}) } });
+};
+
+const subtitleSecondaryText = (item: SubtitleItem) => {
+  if (item.kind === 'event') return `关联 ${item.fileIds.length} 个音频`;
+  return subtitleDialogFileById.value.get(item.fileId)?.originalName || '';
+};
+
+const subtitleInputValue = (item: SubtitleItem) => {
+  if (item.kind === 'event') {
+    return Object.prototype.hasOwnProperty.call(props.subtitles.byEventKey ?? {}, item.eventKey)
+      ? (props.subtitles.byEventKey[item.eventKey] ?? '')
+      : '';
+  }
+  const has = Object.prototype.hasOwnProperty.call(props.subtitles.customByFileId ?? {}, item.fileId);
+  return has ? (props.subtitles.customByFileId[item.fileId] ?? '') : getCustomDefaultSubtitle(item.fileId);
+};
+
+const subtitlePlaceholder = (item: SubtitleItem) => {
+  return item.kind === 'event' ? '留空=使用原版字幕' : getCustomDefaultSubtitle(item.fileId);
+};
+
+const subtitleAuto = (item: SubtitleItem) => {
+  const prev = props.subtitles;
+  if (item.kind === 'event') {
+    if (!Object.prototype.hasOwnProperty.call(prev.byEventKey ?? {}, item.eventKey)) return;
+    const nextByEventKey = { ...(prev.byEventKey ?? {}) };
+    delete nextByEventKey[item.eventKey];
+    updateSubtitles({ customByFileId: { ...(prev.customByFileId ?? {}) }, byEventKey: nextByEventKey });
+    return;
+  }
+  const nextCustomByFileId = { ...(prev.customByFileId ?? {}) };
+  nextCustomByFileId[item.fileId] = getCustomDefaultSubtitle(item.fileId);
+  updateSubtitles({ customByFileId: nextCustomByFileId, byEventKey: { ...(prev.byEventKey ?? {}) } });
+};
+
+const subtitleChange = (item: SubtitleItem, nextValue: string) => {
+  const prev = props.subtitles;
+  if (item.kind === 'event') {
+    const trimmed = nextValue.trim();
+    const nextByEventKey = { ...(prev.byEventKey ?? {}) };
+    if (!trimmed) {
+      if (!Object.prototype.hasOwnProperty.call(nextByEventKey, item.eventKey)) return;
+      delete nextByEventKey[item.eventKey];
+      updateSubtitles({ customByFileId: { ...(prev.customByFileId ?? {}) }, byEventKey: nextByEventKey });
+      return;
+    }
+    nextByEventKey[item.eventKey] = nextValue;
+    updateSubtitles({ customByFileId: { ...(prev.customByFileId ?? {}) }, byEventKey: nextByEventKey });
+    return;
+  }
+  const nextCustomByFileId = { ...(prev.customByFileId ?? {}) };
+  nextCustomByFileId[item.fileId] = nextValue;
+  updateSubtitles({ customByFileId: nextCustomByFileId, byEventKey: { ...(prev.byEventKey ?? {}) } });
 };
 
 const onDragOver = (e: DragEvent) => {
@@ -220,10 +394,18 @@ const removeEvent = (index: number) => {
       <div class="flex gap-3">
         <button 
           v-if="files.length > 0"
-          @click="emit('update:files', [])"
+          @click="clearFiles"
           class="px-4 py-2 rounded-xl text-sm font-bold text-red-500 hover:bg-red-50 transition"
         >
           清空列表
+        </button>
+        <button
+          type="button"
+          :disabled="files.length === 0"
+          @click="openSubtitleDialog"
+          class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          管理字幕
         </button>
         <button 
           @click="triggerUpload"
@@ -420,6 +602,76 @@ const removeEvent = (index: number) => {
         <div class="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0">
           <button @click="closeEventEditor" class="px-4 py-2 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-200 transition">取消</button>
           <button @click="saveEvents" class="px-4 py-2 rounded-xl bg-blue-500 text-white text-sm font-bold hover:bg-blue-600 transition shadow-lg shadow-blue-500/20">保存配置</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="subtitleDialogOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+      <div class="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0">
+          <div class="min-w-0">
+            <h3 class="text-lg font-bold text-slate-800">字幕管理</h3>
+            <div class="mt-1 text-sm text-slate-500">字幕属于声音事件；同一事件只会显示一个字幕。</div>
+          </div>
+          <button @click="closeSubtitleDialog" class="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200">
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <div class="p-5 shrink-0">
+          <div class="relative">
+            <input
+              v-model="subtitleDialogQuery"
+              class="w-full rounded-2xl border-2 border-transparent bg-slate-50 py-3 pl-4 pr-11 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(219,234,254,1)]"
+              placeholder="搜索事件 / 文件名"
+            />
+            <button
+              v-if="subtitleDialogQuery"
+              type="button"
+              aria-label="清空输入"
+              @click="subtitleDialogQuery = ''"
+              class="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div class="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+          <div class="mb-2 text-[11px] font-bold text-slate-400">匹配结果: {{ subtitleDialogMatches.length }}</div>
+          <div v-if="subtitleDialogMatches.length === 0" class="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
+            暂无可管理的字幕（请先添加音频）。
+          </div>
+          <div v-else class="grid gap-3">
+            <div
+              v-for="item in subtitleDialogMatches"
+              :key="item.kind === 'event' ? `event-${item.eventKey}` : `file-${item.fileId}`"
+              class="rounded-2xl border border-slate-200 bg-white p-4"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="truncate text-sm font-extrabold text-slate-800" :title="item.eventKey">{{ item.eventKey }}</div>
+                  <div class="mt-1 text-[11px] font-bold text-slate-400">{{ subtitleSecondaryText(item) }}</div>
+                </div>
+                <button
+                  type="button"
+                  @click="subtitleAuto(item)"
+                  class="inline-flex shrink-0 items-center rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-bold text-white transition hover:bg-slate-800"
+                >
+                  自动生成
+                </button>
+              </div>
+
+              <div class="mt-3">
+                <input
+                  :value="subtitleInputValue(item)"
+                  @input="(e) => subtitleChange(item, (e.target as HTMLInputElement).value)"
+                  :placeholder="subtitlePlaceholder(item)"
+                  class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(219,234,254,1)]"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

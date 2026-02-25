@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { Package, FileText, Loader2, FolderOpen, Copy } from 'lucide-vue-next';
 import JSZip from 'jszip';
-import type { FileItem, PackMeta } from '../../lib/types';
+import type { FileItem, PackMeta, SubtitleContext } from '../../lib/types';
 import { buildJavaPackMcmetaText, buildJavaSoundsJson, buildBedrockSoundDefinitions } from '../../lib/pack-builder';
 import { DEFAULT_KEY, buildPackDescription, normalizeKey, uuid } from '../../lib/utils';
 import { localCache } from '../../lib/cache';
@@ -10,6 +10,7 @@ import { localCache } from '../../lib/cache';
 const props = defineProps<{
   files: FileItem[];
   meta: PackMeta;
+  subtitles?: SubtitleContext;
 }>();
 
 const emit = defineEmits<{
@@ -45,7 +46,7 @@ const buildZipBytes = async () => {
     zip.file('pack.mcmeta', buildJavaPackMcmetaText(props.meta.javaPackFormat, desc));
     if (props.meta.iconFile) zip.file('pack.png', props.meta.iconFile);
 
-    const soundsJson = buildJavaSoundsJson(key, readyFiles.value, props.meta.modifyVanilla);
+    const soundsJson = buildJavaSoundsJson(key, readyFiles.value, props.meta.modifyVanilla, props.subtitles);
     zip.file('assets/minecraft/sounds.json', JSON.stringify(soundsJson, null, 2));
 
     const soundFolder = zip.folder(`assets/minecraft/sounds/${key}`);
@@ -76,7 +77,7 @@ const buildZipBytes = async () => {
     zip.file('manifest.json', JSON.stringify(manifest, null, 2));
     if (props.meta.iconFile) zip.file('pack_icon.png', props.meta.iconFile);
 
-    const definitions = buildBedrockSoundDefinitions(key, readyFiles.value, props.meta.modifyVanilla);
+    const definitions = buildBedrockSoundDefinitions(key, readyFiles.value, props.meta.modifyVanilla, props.subtitles);
     zip.file('sounds/sound_definitions.json', JSON.stringify(definitions, null, 2));
 
     const soundFolder = zip.folder(`sounds/${key}`);

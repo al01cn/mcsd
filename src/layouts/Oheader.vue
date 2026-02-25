@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { Minus, X, ArrowRight, Loader2, AlertCircle, RefreshCw, Settings } from 'lucide-vue-next';
 import config from '../lib/config'
-import { onMounted, onBeforeUnmount, ref } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import GlobalDialog from '../components/GlobalDialog.vue';
 import Model from '../components/Model.vue';
 import { PhCaretDoubleRight } from "@phosphor-icons/vue";
@@ -14,8 +14,8 @@ import Step3Convert from '../components/AudioPackGenerator/Step3Convert.vue';
 import Step4Download from '../components/AudioPackGenerator/Step4Download.vue';
 
 // Types & Libs
-import type { PackMeta, FileItem, AudioProgressItem, ConvertLogItem } from '../lib/types';
-import { DEFAULT_KEY, checkMinecraftOggReady, isMaybeOggFile } from '../lib/utils';
+import type { PackMeta, FileItem, AudioProgressItem, ConvertLogItem, SubtitleContext } from '../lib/types';
+import { DEFAULT_KEY, checkMinecraftOggReady, getAudioBaseName, isMaybeOggFile } from '../lib/utils';
 import ffmpeg from '../lib/ffmpeg';
 
 const steps = ["基本信息", "导入音频", "格式转换", "输出资源包"];
@@ -45,13 +45,32 @@ const createDefaultProcessing = () => ({
     error: null as string | null,
 });
 
+const createDefaultSubtitles = (): SubtitleContext => ({
+    customByFileId: {},
+    byEventKey: {},
+});
+
 // State
 const meta = ref<PackMeta>(createDefaultMeta());
 
 const files = ref<FileItem[]>([]);
+const subtitles = ref<SubtitleContext>(createDefaultSubtitles());
 const processing = ref(createDefaultProcessing());
 const audioProgress = ref<Record<string, AudioProgressItem>>({});
 const convertLogs = ref<ConvertLogItem[]>([]);
+
+const effectiveSubtitles = computed<SubtitleContext>(() => {
+    const prefix = '音频：';
+    const customByFileId: Record<string, string> = { ...subtitles.value.customByFileId };
+    for (const f of files.value) {
+        const has = Object.prototype.hasOwnProperty.call(customByFileId, f.id);
+        const current = has ? String(customByFileId[f.id] ?? '') : '';
+        if (current.trim()) continue;
+        const base = getAudioBaseName(f.originalName) || f.newName;
+        customByFileId[f.id] = `${prefix}${base}`;
+    }
+    return { customByFileId, byEventKey: { ...subtitles.value.byEventKey } };
+});
 
 const ffmpegGate = ref<{
     status: 'loading' | 'ready' | 'error';
@@ -193,6 +212,7 @@ const createNewPack = () => {
     if (meta.value.iconPreviewUrl) URL.revokeObjectURL(meta.value.iconPreviewUrl);
     meta.value = createDefaultMeta();
     files.value = [];
+    subtitles.value = createDefaultSubtitles();
     processing.value = createDefaultProcessing();
     audioProgress.value = {};
     convertLogs.value = [];
@@ -343,7 +363,7 @@ const startProcessing = async () => {
             <span class="font-black text-sm tracking-tight text-slate-800 text-nowrap">{{ config.appName }}</span>
         </div>
 
-        <nav class="flex items-center gap-4 h-full">
+        <nav class="step-nav flex-1 mx-4 flex items-center justify-center gap-4 h-full overflow-x-auto">
             <div 
                 v-for="(step, index) in steps" 
                 :key="step" 
@@ -386,7 +406,7 @@ const startProcessing = async () => {
 
     </header>
 
-    <main class="flex-1 relative bg-slate-50/50 h-[calc(100vh-3.5rem)] overflow-hidden flex flex-col">
+    <main class="flex-1 min-h-0 relative bg-slate-50/50 h-[calc(100vh-3.5rem)] overflow-hidden flex flex-col">
         <div v-if="ffmpegGate.status !== 'ready'" class="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-sm p-6">
             <div class="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-6 shadow-xl">
                 <div class="flex items-center gap-3">
@@ -421,8 +441,8 @@ const startProcessing = async () => {
             </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto">
-            <div class="max-w-5xl mx-auto px-6 py-8 pb-24">
+        <div class="flex-1 min-h-0 overflow-y-auto">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24">
                 <!-- Transition wrapper could be added here -->
                 
                 <!-- 基本信息 -->
@@ -445,6 +465,7 @@ const startProcessing = async () => {
                 <div v-if="hasStep === steps[1]">
                     <Step2ImportAudio 
                         v-model:files="files" 
+                        v-model:subtitles="subtitles"
                         :meta="meta" 
                         @request-process="startProcessing"
                         @prev="goToStep(steps[0])"
@@ -468,6 +489,7 @@ const startProcessing = async () => {
                     <Step4Download 
                         :files="files"
                         :meta="meta"
+                        :subtitles="effectiveSubtitles"
                         @create-new="createNewPack"
                     />
                 </div>
@@ -566,5 +588,10 @@ const startProcessing = async () => {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+.step-nav::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 </style>

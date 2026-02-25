@@ -45,3 +45,8 @@ export type ConvertLogItem = {
   level: "info" | "error";
   message: string;
 };
+
+export type SubtitleContext = {
+  customByFileId: Record<string, string>;
+  byEventKey: Record<string, string>;
+};
