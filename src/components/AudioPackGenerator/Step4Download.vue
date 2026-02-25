@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { Package, FileText, Loader2, FolderOpen, RefreshCw, Copy } from 'lucide-vue-next';
+import { Package, FileText, Loader2, FolderOpen, Copy } from 'lucide-vue-next';
 import JSZip from 'jszip';
 import type { FileItem, PackMeta } from '../../lib/types';
 import { buildJavaPackMcmetaText, buildJavaSoundsJson, buildBedrockSoundDefinitions } from '../../lib/pack-builder';
@@ -223,10 +223,9 @@ onMounted(() => {
         <button
           type="button"
           @click="emit('create-new')"
-          class="bg-green-500 hover:bg-green-600 disabled:opacity-70 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-green-500/20 transition flex items-center justify-center gap-2 min-w-[200px]"
+          class="bg-sky-400 hover:bg-sky-300 disabled:opacity-70 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-bold shadow-[0_4px_14px_0_rgba(56,189,248,0.35)] transition flex items-center justify-center gap-2 min-w-[200px]"
         >
-          <RefreshCw class="w-5 h-5" />
-          <span>创建新的</span>
+          <span>创建新的资源包</span>
         </button>
 
         <button

@@ -4,6 +4,7 @@ import { UploadCloud, Music, Trash2, Settings, Plus, X, Search, Check, AlertTria
 import type { FileItem, PackMeta, VanillaEventMapping } from '../../lib/types';
 import { processFileName, getAudioBaseName, buildId, formatBytes, collectDuplicateFileNameIds } from '../../lib/utils';
 import * as soundsMod from '../../lib/sounds';
+import { buildSoundEventSearchText, fuzzyMatchSoundEventKey, translateSoundEventKeyZh } from '../../lib/SoundsTranslate';
 
 const props = defineProps<{
   files: FileItem[];
@@ -24,6 +25,7 @@ const eventEditorSearch = ref('');
 const eventEditorSelection = ref<VanillaEventMapping[]>([]);
 
 const duplicateIds = computed(() => collectDuplicateFileNameIds(props.files));
+const selectedEventSet = computed(() => new Set(eventEditorSelection.value.map((e) => e.event)));
 
 const vanillaEventKeys = computed(() => {
   if (props.meta.platform === 'java') {
@@ -64,9 +66,44 @@ const vanillaEventKeys = computed(() => {
 });
 
 const filteredEventKeys = computed(() => {
-  const q = eventEditorSearch.value.trim().toLowerCase();
+  const q = eventEditorSearch.value.trim();
   if (!q) return vanillaEventKeys.value.slice(0, 100);
-  return vanillaEventKeys.value.filter(k => k.toLowerCase().includes(q)).slice(0, 100);
+  const qLower = q.toLowerCase();
+  const qNormalized = qLower.replace(/[^0-9a-z\u4e00-\u9fff]+/g, "");
+
+  const scored: Array<{ key: string; score: number }> = [];
+  for (const key of vanillaEventKeys.value) {
+    if (!fuzzyMatchSoundEventKey(key, q)) continue;
+
+    const keyLower = key.toLowerCase();
+    if (keyLower.includes(qLower)) {
+      scored.push({ key, score: 0 });
+      continue;
+    }
+
+    const loose = keyLower.replace(/[:._]+/g, " ");
+    if (loose.includes(qLower)) {
+      scored.push({ key, score: 1 });
+      continue;
+    }
+
+    const hay = buildSoundEventSearchText(key).toLowerCase();
+    if (hay.includes(qLower)) {
+      scored.push({ key, score: 2 });
+      continue;
+    }
+
+    const hayNormalized = hay.replace(/[^0-9a-z\u4e00-\u9fff]+/g, "");
+    if (qNormalized && hayNormalized.includes(qNormalized)) {
+      scored.push({ key, score: 3 });
+      continue;
+    }
+
+    scored.push({ key, score: 9 });
+  }
+
+  scored.sort((a, b) => a.score - b.score || a.key.localeCompare(b.key));
+  return scored.slice(0, 100).map((x) => x.key);
 });
 
 const triggerUpload = () => {
@@ -353,7 +390,7 @@ const removeEvent = (index: number) => {
                   v-model="eventEditorSearch" 
                   type="text" 
                   class="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition"
-                  placeholder="搜索原版事件..."
+                  placeholder="搜索原版事件（支持中文）"
                 />
               </div>
             </div>
@@ -363,10 +400,18 @@ const removeEvent = (index: number) => {
                 v-for="key in filteredEventKeys" 
                 :key="key"
                 @click="addEvent(key)"
-                class="w-full text-left px-3 py-2 rounded-lg hover:bg-blue-50 text-xs font-mono text-slate-600 hover:text-blue-700 transition truncate flex items-center justify-between group"
+                :disabled="selectedEventSet.has(key)"
+                class="w-full text-left px-3 py-2 rounded-lg text-slate-600 transition flex items-center justify-between gap-3 group disabled:opacity-60 disabled:cursor-not-allowed"
+                :class="selectedEventSet.has(key) ? 'bg-emerald-50 hover:bg-emerald-50' : 'hover:bg-blue-50 hover:text-blue-700'"
               >
-                <span class="truncate">{{ key }}</span>
-                <Plus class="w-3.5 h-3.5 opacity-0 group-hover:opacity-100" />
+                <div class="min-w-0">
+                  <div class="truncate text-xs font-mono">{{ key }}</div>
+                  <div class="truncate text-[11px] font-bold text-slate-400 group-hover:text-blue-500">
+                    {{ translateSoundEventKeyZh(key) }}
+                  </div>
+                </div>
+                <Check v-if="selectedEventSet.has(key)" class="w-4 h-4 text-emerald-600" />
+                <Plus v-else class="w-3.5 h-3.5 opacity-0 group-hover:opacity-100" />
               </button>
             </div>
           </div>

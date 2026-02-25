@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Package, Folder, Image as ImageIcon, Trash2, Edit2, Info } from 'lucide-vue-next';
+import { Package, Folder, Image as ImageIcon, Trash2, Edit2, Info, Check } from 'lucide-vue-next';
 import type { PackMeta } from '../../lib/types';
 import mcVersions from '../../lib/mcver';
+import Model from '../Model.vue';
 
 const props = defineProps<{
   meta: PackMeta;
@@ -13,6 +14,8 @@ const emit = defineEmits<{
 }>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
+const packFormatOpen = ref(false);
+const packFormatQuery = ref('');
 
 const javaPackFormatOptions = computed(() => {
   return mcVersions
@@ -28,9 +31,35 @@ const javaPackFormatOptions = computed(() => {
     });
 });
 
-const updateMeta = (updates: Partial<PackMeta>) => {
-  emit('update:meta', { ...props.meta, ...updates });
+const selectedVersionText = computed(() => {
+  const currentVersion = String(props.meta.javaVersion ?? '').trim();
+  if (currentVersion) return currentVersion;
+  const currentFormat = String(props.meta.javaPackFormat ?? '').trim();
+  const found = javaPackFormatOptions.value.find((x) => x.packFormat === currentFormat);
+  return found?.version ?? '';
+});
+
+const filteredPackFormatOptions = computed(() => {
+  const q = packFormatQuery.value.trim().toLowerCase();
+  if (!q) return javaPackFormatOptions.value.slice(0, 200);
+  return javaPackFormatOptions.value
+    .filter((opt) => `${opt.packFormat} ${opt.version}`.toLowerCase().includes(q))
+    .slice(0, 200);
+});
+
+const openPackFormatDialog = () => {
+  packFormatQuery.value = '';
+  packFormatOpen.value = true;
 };
+
+const pickPackFormat = (packFormat: string, version: string) => {
+  updateMeta({ javaPackFormat: packFormat, javaVersion: version });
+  packFormatOpen.value = false;
+};
+
+function updateMeta(updates: Partial<PackMeta>) {
+  emit('update:meta', { ...props.meta, ...updates });
+}
 
 const handleIconPick = async (file: File | null) => {
   if (!file) {
@@ -258,20 +287,14 @@ const sanitizeKey = (val: string) => {
           </div>
 
           <div v-if="meta.platform === 'java'" class="space-y-1.5">
-            <label class="block text-sm font-bold text-slate-700">资源包格式 (pack_format)</label>
-            <select
-              :value="meta.javaPackFormat"
-              @change="e => updateMeta({ javaPackFormat: (e.target as HTMLSelectElement).value })"
-              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100 transition appearance-none"
+            <label class="block text-sm font-bold text-slate-700">资源包版本</label>
+            <button
+              type="button"
+              @click="openPackFormatDialog"
+              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100 transition"
             >
-              <option 
-                v-for="opt in javaPackFormatOptions" 
-                :key="opt.packFormat" 
-                :value="opt.packFormat"
-              >
-                {{ opt.packFormat }} ({{ opt.version }})
-              </option>
-            </select>
+              {{ selectedVersionText || '请选择版本' }}
+            </button>
           </div>
         </div>
 
@@ -297,4 +320,46 @@ const sanitizeKey = (val: string) => {
       </div>
     </div>
   </div>
+
+  <Model v-model:open="packFormatOpen" title="选择资源包版本">
+    <div class="space-y-4">
+      <div class="space-y-1">
+        <div class="text-xs font-bold text-slate-400 truncate" :title="selectedVersionText">
+          {{ selectedVersionText }}
+        </div>
+        <input
+          v-model="packFormatQuery"
+          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100 transition"
+          placeholder="搜索版本或 pack_format"
+        />
+      </div>
+
+      <div class="max-h-[60vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white">
+        <button
+          v-for="opt in filteredPackFormatOptions"
+          :key="`${opt.packFormat}-${opt.version}`"
+          type="button"
+          @click="pickPackFormat(opt.packFormat, opt.version)"
+          class="w-full px-4 py-3 text-left transition border-b border-slate-100 last:border-b-0"
+          :class="opt.version === selectedVersionText ? 'bg-blue-50' : 'hover:bg-slate-50'"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-sm font-extrabold text-slate-800">{{ opt.version }}</div>
+            </div>
+            <div
+              class="mt-1 flex h-7 w-7 items-center justify-center rounded-lg"
+              :class="opt.version === selectedVersionText ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-300'"
+            >
+              <Check class="h-4 w-4" />
+            </div>
+          </div>
+        </button>
+
+        <div v-if="filteredPackFormatOptions.length === 0" class="p-4 text-sm font-bold text-slate-400">
+          没有匹配的版本
+        </div>
+      </div>
+    </div>
+  </Model>
 </template>

@@ -31,6 +31,7 @@ const createDefaultMeta = (): PackMeta => ({
     desc: "",
     platform: "java",
     javaPackFormat: "15",
+    javaVersion: "",
     iconFile: null,
     iconPreviewUrl: null,
     modifyVanilla: true,
@@ -64,6 +65,7 @@ const ffmpegGate = ref<{
 
 let ffmpegUnsubStatus: null | (() => void) = null;
 let ffmpegUnsubProgress: null | (() => void) = null;
+let windowDropGuardCleanup: null | (() => void) = null;
 
 const startFfmpegPreload = async () => {
     ffmpegGate.value = { status: 'loading', progress: 0, error: null };
@@ -129,6 +131,16 @@ onMounted(() => {
 
     void startFfmpegPreload();
     void ensurePackOutputDir();
+
+    const prevent = (e: DragEvent) => {
+        e.preventDefault();
+    };
+    window.addEventListener('dragover', prevent, true);
+    window.addEventListener('drop', prevent, true);
+    windowDropGuardCleanup = () => {
+        window.removeEventListener('dragover', prevent, true);
+        window.removeEventListener('drop', prevent, true);
+    };
 });
 
 onBeforeUnmount(() => {
@@ -136,6 +148,8 @@ onBeforeUnmount(() => {
     ffmpegUnsubProgress?.();
     ffmpegUnsubStatus = null;
     ffmpegUnsubProgress = null;
+    windowDropGuardCleanup?.();
+    windowDropGuardCleanup = null;
 });
 
 const close = () => {

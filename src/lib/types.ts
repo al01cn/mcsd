@@ -26,6 +26,7 @@ export type PackMeta = {
   desc: string;
   platform: PackPlatform;
   javaPackFormat: string;
+  javaVersion: string;
   iconFile: File | null;
   iconPreviewUrl: string | null;
   modifyVanilla: boolean;
