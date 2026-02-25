@@ -1,10 +1,11 @@
 // @see - https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "OneTunnel",
-  "icon": "public/favicon.png",
+  "appId": "MinecraftSounds",
+  "copyright": "Copyright © 2025 AL01.",
+  "icon": "public/note_block.png",
   "asar": true,
-  "productName": "OneTunnel",
+  "productName": "Minecraft 音频包生成器",
   "directories": {
     "output": "debug/${version}"
   },
