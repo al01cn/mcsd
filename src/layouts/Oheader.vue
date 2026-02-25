@@ -1,20 +1,105 @@
 <script lang="ts" setup>
-import { Minus, X } from 'lucide-vue-next';
+import { Minus, X, ArrowRight, ArrowLeft, Loader2, AlertCircle, RefreshCw } from 'lucide-vue-next';
 import config from '../lib/config'
-import { onMounted, ref } from 'vue';
+import { onMounted, onBeforeUnmount, ref } from 'vue';
 import GlobalDialog from '../components/GlobalDialog.vue';
 import { PhCaretDoubleRight } from "@phosphor-icons/vue";
 
-const steps = ["基本信息", "导入音频", "格式转换", "打包下载", "生成命令"]
+// Components
+import Step1BasicInfo from '../components/AudioPackGenerator/Step1BasicInfo.vue';
+import Step2ImportAudio from '../components/AudioPackGenerator/Step2ImportAudio.vue';
+import Step3Convert from '../components/AudioPackGenerator/Step3Convert.vue';
+import Step4Download from '../components/AudioPackGenerator/Step4Download.vue';
+import Step5Command from '../components/AudioPackGenerator/Step5Command.vue';
+
+// Types & Libs
+import type { PackMeta, FileItem, AudioProgressItem, ConvertLogItem } from '../lib/types';
+import { DEFAULT_KEY, checkMinecraftOggReady, isMaybeOggFile } from '../lib/utils';
+import ffmpeg from '../lib/ffmpeg';
+
+const steps = ["基本信息", "导入音频", "格式转换", "打包下载", "生成命令"];
 const hasStep = ref(steps[0]);
 
+// State
+const meta = ref<PackMeta>({
+    name: "",
+    key: DEFAULT_KEY,
+    desc: "",
+    platform: "java",
+    javaPackFormat: "15",
+    iconFile: null,
+    iconPreviewUrl: null,
+    modifyVanilla: true,
+});
+
+const files = ref<FileItem[]>([]);
+const processing = ref({
+    title: "正在准备转换器...",
+    desc: "首次使用会下载转换组件，请耐心等待。",
+    currentFile: "Waiting to start...",
+    percent: 0,
+    error: null as string | null,
+});
+const audioProgress = ref<Record<string, AudioProgressItem>>({});
+const convertLogs = ref<ConvertLogItem[]>([]);
+
+const ffmpegGate = ref<{
+    status: 'loading' | 'ready' | 'error';
+    progress: number;
+    error: string | null;
+}>({
+    status: 'loading',
+    progress: 0,
+    error: null,
+});
+
+let ffmpegUnsubStatus: null | (() => void) = null;
+let ffmpegUnsubProgress: null | (() => void) = null;
+
+const startFfmpegPreload = async () => {
+    ffmpegGate.value = { status: 'loading', progress: 0, error: null };
+    try {
+        const timeoutMs = 60_000;
+        await Promise.race([
+            ffmpeg.load(),
+            new Promise<void>((_, reject) => {
+                window.setTimeout(() => reject(new Error(`FFmpeg 加载超时（>${Math.round(timeoutMs / 1000)}s）`)), timeoutMs);
+            }),
+        ]);
+        ffmpegGate.value = { status: 'ready', progress: 100, error: null };
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        ffmpegGate.value = { status: 'error', progress: 0, error: msg };
+    }
+};
+
 onMounted(() => {
-    // Dialog.info({
-    //     title: '提示',
-    //     msg: '这里点击遮罩不会关闭',
-    //     closeOnMask: false
-    // })
-})
+    ffmpegUnsubStatus = ffmpeg.onStatus((status) => {
+        if (ffmpegGate.value.status === 'ready') return;
+        if (status === 'error') {
+            ffmpegGate.value = { status: 'error', progress: ffmpegGate.value.progress, error: ffmpegGate.value.error ?? 'FFmpeg 加载失败' };
+            return;
+        }
+        if (status === 'loading') {
+            ffmpegGate.value = { status: 'loading', progress: ffmpegGate.value.progress, error: null };
+            return;
+        }
+    });
+
+    ffmpegUnsubProgress = ffmpeg.onProgress((p) => {
+        if (ffmpegGate.value.status === 'ready') return;
+        ffmpegGate.value = { ...ffmpegGate.value, progress: p };
+    });
+
+    void startFfmpegPreload();
+});
+
+onBeforeUnmount(() => {
+    ffmpegUnsubStatus?.();
+    ffmpegUnsubProgress?.();
+    ffmpegUnsubStatus = null;
+    ffmpegUnsubProgress = null;
+});
 
 const close = () => {
     (window as any).windowControl.close();
@@ -22,6 +107,167 @@ const close = () => {
 
 const minimize = () => {
     (window as any).windowControl.minimize();
+};
+
+const goToStep = (stepName: string) => {
+    if (ffmpegGate.value.status !== 'ready') return;
+    // Simple validation before jumping
+    const currentIndex = steps.indexOf(hasStep.value);
+    const targetIndex = steps.indexOf(stepName);
+    
+    // Prevent jumping forward arbitrarily if not ready (simple check)
+    if (targetIndex > currentIndex) {
+        if (currentIndex === 0 && !meta.value.name) {
+            alert("请先填写资源包名称");
+            return;
+        }
+        if (currentIndex === 1 && files.value.length === 0) {
+            alert("请先导入音频文件");
+            return;
+        }
+    }
+    
+    hasStep.value = stepName;
+};
+
+const nextStep = () => {
+    if (ffmpegGate.value.status !== 'ready') return;
+    const idx = steps.indexOf(hasStep.value);
+    if (idx < steps.length - 1) {
+        goToStep(steps[idx + 1]);
+    }
+};
+
+const startProcessing = async () => {
+    if (ffmpegGate.value.status !== 'ready') return;
+    goToStep(steps[2]);
+
+    processing.value = {
+        title: "正在准备转换器...",
+        desc: "加载 FFmpeg 核心组件",
+        currentFile: "Initializing...",
+        percent: 0,
+        error: null,
+    };
+    convertLogs.value = [];
+    audioProgress.value = {};
+
+    const sourceFiles = files.value;
+    const total = sourceFiles.length;
+    let baseDone = 0;
+
+    for (const f of sourceFiles) {
+        f.status = 'pending';
+        f.processedBlob = null;
+        audioProgress.value[f.id] = { stage: 'queued', percent: 0 };
+    }
+
+    try {
+        processing.value.title = "正在转换音频...";
+        processing.value.desc = "将音频转换为 OGG 格式（44100Hz / 双声道）";
+
+        for (const file of sourceFiles) {
+            processing.value.currentFile = `正在处理: ${file.originalName}`;
+
+            audioProgress.value[file.id] = { stage: 'checking', percent: 0 };
+            file.status = 'processing';
+
+            convertLogs.value.push({
+                id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                at: Date.now(),
+                level: 'info',
+                message: `开始处理: ${file.originalName} -> ${file.newName}.ogg`
+            });
+
+            if (isMaybeOggFile(file)) {
+                const ready = await checkMinecraftOggReady(file.originalFile);
+                if (ready.ready) {
+                    file.processedBlob = file.originalFile;
+                    file.status = 'done';
+                    audioProgress.value[file.id] = { stage: 'skipped', percent: 100 };
+                    baseDone += 1;
+                    processing.value.percent = (baseDone / total) * 100;
+                    convertLogs.value.push({
+                        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                        at: Date.now(),
+                        level: 'info',
+                        message: `已符合规格，跳过转码: ${file.originalName}`
+                    });
+                    continue;
+                }
+            }
+
+            audioProgress.value[file.id] = { stage: 'converting', percent: 0 };
+
+            const unsubscribe = ffmpeg.onProgress((p) => {
+                audioProgress.value[file.id] = { stage: 'converting', percent: p };
+                processing.value.percent = ((baseDone + p / 100) / total) * 100;
+            });
+
+            try {
+                const { blob } = await ffmpeg.toOGG(file.originalFile);
+                file.processedBlob = blob;
+                file.status = 'done';
+
+                unsubscribe();
+                audioProgress.value[file.id] = { stage: 'done', percent: 100 };
+                baseDone += 1;
+                processing.value.percent = (baseDone / total) * 100;
+
+                convertLogs.value.push({
+                    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                    at: Date.now(),
+                    level: 'info',
+                    message: `完成: ${file.newName}.ogg`
+                });
+            } catch (err) {
+                unsubscribe();
+                file.status = 'error';
+                audioProgress.value[file.id] = { stage: 'error', percent: 0 };
+                const msg = err instanceof Error ? err.message : String(err);
+                convertLogs.value.push({
+                    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                    at: Date.now(),
+                    level: 'error',
+                    message: `失败: ${file.originalName} - ${msg}`
+                });
+
+                processing.value = {
+                    title: "转换失败",
+                    desc: "请尝试更换音频文件或重试。",
+                    currentFile: file.originalName,
+                    percent: processing.value.percent,
+                    error: msg,
+                };
+                return;
+            }
+        }
+
+        processing.value = {
+            title: "转换完成",
+            desc: "正在生成 sounds.json 与资源包元数据。",
+            currentFile: "All files processed!",
+            percent: 100,
+            error: null,
+        };
+
+        goToStep(steps[3]);
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        processing.value = {
+            title: "转换器加载失败",
+            desc: "请检查 FFmpeg 核心文件是否存在，或重试。",
+            currentFile: "FFmpeg load failed",
+            percent: 0,
+            error: msg,
+        };
+        convertLogs.value.push({
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            at: Date.now(),
+            level: 'error',
+            message: `致命错误: ${msg}`
+        });
+    }
 };
 
 </script>
@@ -37,17 +283,30 @@ const minimize = () => {
         </div>
 
         <nav class="flex items-center gap-4 h-full">
-            <div v-for="step in steps" :key="step" class="flex items-center gap-2">
-                <div class="flex items-center bg-blue-300 rounded-full active">
+            <div 
+                v-for="(step, index) in steps" 
+                :key="step" 
+                class="flex items-center gap-2 cursor-pointer group"
+                @click="ffmpegGate.status === 'ready' && steps.indexOf(hasStep) > index ? goToStep(step) : null" 
+            >
+                <div 
+                    class="flex items-center rounded-full transition-all duration-300 px-1 py-1 pr-4"
+                    :class="hasStep === step ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'"
+                >
                     <div
-                        class="bg-blue-400 text-white w-6 h-6 rounded-full flex justify-center items-center text-center">
-                        {{ steps.indexOf(step) + 1 }}
+                        class="w-6 h-6 rounded-full flex justify-center items-center text-center text-[10px] font-bold mr-2 transition-colors"
+                        :class="hasStep === step ? 'bg-blue-500 text-white' : (steps.indexOf(hasStep) > index ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-500')"
+                    >
+                        {{ index + 1 }}
                     </div>
-                    <a class="nav-tab text-white font-bold text-[13px] h-full px-4 text-center">
+                    <span 
+                        class="text-[13px] font-bold transition-colors"
+                        :class="hasStep === step ? 'text-blue-600' : (steps.indexOf(hasStep) > index ? 'text-green-600' : 'text-slate-400')"
+                    >
                         {{ step }}
-                    </a>
+                    </span>
                 </div>
-                <PhCaretDoubleRight class="text-blue-400" v-if="step !== steps[steps.length - 1]" :size="16" />
+                <PhCaretDoubleRight class="text-slate-300" v-if="step !== steps[steps.length - 1]" :size="14" />
             </div>
 
         </nav>
@@ -67,27 +326,116 @@ const minimize = () => {
 
     </header>
 
-    <main class="flex-1 relative bg-slate-50/50 h-screen">
-        <div class="max-w-4xl mx-auto px-6 py-10 pb-24 overflow-y-auto">
-            <!-- 基本信息 -->
-            <div v-if="hasStep === steps[0]">
-                基本信息
+    <main class="flex-1 relative bg-slate-50/50 h-[calc(100vh-3.5rem)] overflow-hidden flex flex-col">
+        <div v-if="ffmpegGate.status !== 'ready'" class="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-sm p-6">
+            <div class="w-full max-w-sm rounded-3xl border border-slate-200 bg-white p-6 shadow-xl">
+                <div class="flex items-center gap-3">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-full" :class="ffmpegGate.status === 'error' ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'">
+                        <AlertCircle v-if="ffmpegGate.status === 'error'" class="h-5 w-5" />
+                        <Loader2 v-else class="h-5 w-5 animate-spin" />
+                    </div>
+                    <div class="min-w-0">
+                        <div class="text-base font-extrabold text-slate-800">
+                            {{ ffmpegGate.status === 'error' ? 'FFmpeg 加载失败' : '正在加载音频转换器' }}
+                        </div>
+                        <div class="text-sm text-slate-500">
+                            {{ ffmpegGate.status === 'error' ? (ffmpegGate.error || '请重试') : '首次启动需要加载核心组件，请稍候。' }}
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="ffmpegGate.status !== 'error'" class="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500">
+                    进度：{{ Math.min(100, Math.max(0, Math.round(ffmpegGate.progress))) }}%
+                </div>
+
+                <div v-if="ffmpegGate.status === 'error'" class="mt-5 flex justify-end">
+                    <button
+                        type="button"
+                        @click="startFfmpegPreload"
+                        class="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800"
+                    >
+                        <RefreshCw class="h-4 w-4" />
+                        重试
+                    </button>
+                </div>
             </div>
-            <!-- 导入音频 -->
-            <div v-if="hasStep === steps[1]">
-                导入音频
-            </div>
-            <!-- 格式转换 -->
-            <div v-if="hasStep === steps[2]">
-                格式转换
-            </div>
-            <!-- 打包下载 -->
-            <div v-if="hasStep === steps[3]">
-                打包下载
-            </div>
-            <!-- 生成命令 -->
-            <div v-if="hasStep === steps[4]">
-                生成命令
+        </div>
+
+        <div class="flex-1 overflow-y-auto">
+            <div class="max-w-5xl mx-auto px-6 py-8 pb-24">
+                <!-- Transition wrapper could be added here -->
+                
+                <!-- 基本信息 -->
+                <div v-if="hasStep === steps[0]">
+                    <Step1BasicInfo v-model:meta="meta" />
+                    
+                    <div class="flex justify-end mt-8">
+                        <button 
+                            @click="nextStep"
+                            :disabled="ffmpegGate.status !== 'ready' || !meta.name"
+                            class="bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-500/20 transition flex items-center gap-2"
+                        >
+                            <span>下一步</span>
+                            <ArrowRight class="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 导入音频 -->
+                <div v-if="hasStep === steps[1]">
+                    <Step2ImportAudio 
+                        v-model:files="files" 
+                        :meta="meta" 
+                        @request-process="startProcessing"
+                    />
+                </div>
+
+                <!-- 格式转换 -->
+                <div v-if="hasStep === steps[2]">
+                    <Step3Convert 
+                        :processing="processing"
+                        :logs="convertLogs"
+                        :audio-progress="audioProgress"
+                        :files="files"
+                        @next="nextStep"
+                        @retry="startProcessing"
+                    />
+                </div>
+
+                <!-- 打包下载 -->
+                <div v-if="hasStep === steps[3]">
+                    <Step4Download 
+                        :files="files"
+                        :meta="meta"
+                        @next="nextStep"
+                    />
+                    <div class="flex justify-start mt-8">
+                         <button 
+                            @click="goToStep(steps[1])"
+                            class="text-slate-400 hover:text-slate-600 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition"
+                        >
+                            <ArrowLeft class="w-4 h-4" />
+                            <span>返回修改</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 生成命令 -->
+                <div v-if="hasStep === steps[4]">
+                    <Step5Command 
+                        :files="files"
+                        :meta="meta"
+                    />
+                    <div class="flex justify-start mt-8">
+                         <button 
+                            @click="goToStep(steps[3])"
+                            class="text-slate-400 hover:text-slate-600 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition"
+                        >
+                            <ArrowLeft class="w-4 h-4" />
+                            <span>返回下载</span>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -100,18 +448,14 @@ const minimize = () => {
 /* Titlebar */
 .app-titlebar {
     -webkit-app-region: drag;
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.9);
     backdrop-filter: blur(20px);
     border-bottom: 1px solid rgba(226, 232, 240, 0.8);
     position: relative;
     font-family: var(--font-main) !important;
 }
 
-.app-titlebar button {
-    -webkit-app-region: no-drag;
-}
-
-.app-titlebar a {
+.app-titlebar button, .app-titlebar .cursor-pointer {
     -webkit-app-region: no-drag;
 }
 
@@ -126,5 +470,21 @@ const minimize = () => {
 
 .active {
     color: #4DB7FF;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 </style>
