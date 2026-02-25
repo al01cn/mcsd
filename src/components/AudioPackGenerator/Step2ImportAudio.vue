@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { UploadCloud, Music, Trash2, Settings, Plus, X, Search, Check, AlertTriangle } from 'lucide-vue-next';
+import { UploadCloud, Music, Trash2, Settings, Plus, X, Search, Check, AlertTriangle, ArrowLeft } from 'lucide-vue-next';
 import type { FileItem, PackMeta, VanillaEventMapping } from '../../lib/types';
 import { processFileName, getAudioBaseName, buildId, formatBytes, collectDuplicateFileNameIds } from '../../lib/utils';
 import * as soundsMod from '../../lib/sounds';
@@ -13,6 +13,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:files', value: FileItem[]): void;
   (e: 'request-process'): void;
+  (e: 'prev'): void;
 }>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -166,9 +167,18 @@ const removeEvent = (index: number) => {
   <div class="space-y-6">
     <!-- Header Actions -->
     <div class="flex items-center justify-between">
-      <div>
-        <h2 class="text-lg font-bold text-slate-800">导入音频</h2>
-        <p class="text-sm text-slate-500">添加音频文件，重命名并配置事件</p>
+      <div class="flex items-start gap-3">
+        <button
+          type="button"
+          @click="emit('prev')"
+          class="mt-0.5 h-9 w-9 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-100 transition"
+        >
+          <ArrowLeft class="w-4 h-4" />
+        </button>
+        <div>
+          <h2 class="text-lg font-bold text-slate-800">导入音频</h2>
+          <p class="text-sm text-slate-500">添加音频文件，重命名并配置事件</p>
+        </div>
       </div>
       <div class="flex gap-3">
         <button 

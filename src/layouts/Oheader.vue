@@ -1,27 +1,31 @@
 <script lang="ts" setup>
-import { Minus, X, ArrowRight, ArrowLeft, Loader2, AlertCircle, RefreshCw } from 'lucide-vue-next';
+import { Minus, X, ArrowRight, Loader2, AlertCircle, RefreshCw, Settings } from 'lucide-vue-next';
 import config from '../lib/config'
 import { onMounted, onBeforeUnmount, ref } from 'vue';
 import GlobalDialog from '../components/GlobalDialog.vue';
+import Model from '../components/Model.vue';
 import { PhCaretDoubleRight } from "@phosphor-icons/vue";
+import { localCache } from '../lib/cache';
 
 // Components
 import Step1BasicInfo from '../components/AudioPackGenerator/Step1BasicInfo.vue';
 import Step2ImportAudio from '../components/AudioPackGenerator/Step2ImportAudio.vue';
 import Step3Convert from '../components/AudioPackGenerator/Step3Convert.vue';
 import Step4Download from '../components/AudioPackGenerator/Step4Download.vue';
-import Step5Command from '../components/AudioPackGenerator/Step5Command.vue';
 
 // Types & Libs
 import type { PackMeta, FileItem, AudioProgressItem, ConvertLogItem } from '../lib/types';
 import { DEFAULT_KEY, checkMinecraftOggReady, isMaybeOggFile } from '../lib/utils';
 import ffmpeg from '../lib/ffmpeg';
 
-const steps = ["基本信息", "导入音频", "格式转换", "打包下载", "生成命令"];
+const steps = ["基本信息", "导入音频", "格式转换", "输出资源包"];
 const hasStep = ref(steps[0]);
 
-// State
-const meta = ref<PackMeta>({
+const settingsOpen = ref(false);
+const packOutputDir = localCache.get<string>('settings:packOutputDir', null);
+const defaultDownloadsDir = ref<string>('');
+
+const createDefaultMeta = (): PackMeta => ({
     name: "",
     key: DEFAULT_KEY,
     desc: "",
@@ -32,14 +36,19 @@ const meta = ref<PackMeta>({
     modifyVanilla: true,
 });
 
-const files = ref<FileItem[]>([]);
-const processing = ref({
+const createDefaultProcessing = () => ({
     title: "正在准备转换器...",
     desc: "首次使用会下载转换组件，请耐心等待。",
     currentFile: "Waiting to start...",
     percent: 0,
     error: null as string | null,
 });
+
+// State
+const meta = ref<PackMeta>(createDefaultMeta());
+
+const files = ref<FileItem[]>([]);
+const processing = ref(createDefaultProcessing());
 const audioProgress = ref<Record<string, AudioProgressItem>>({});
 const convertLogs = ref<ConvertLogItem[]>([]);
 
@@ -73,6 +82,33 @@ const startFfmpegPreload = async () => {
     }
 };
 
+const resolveDownloadsDir = async () => {
+    const dir = await window.ipcRenderer.invoke('system:getPath', 'downloads');
+    defaultDownloadsDir.value = typeof dir === 'string' ? dir : '';
+    return defaultDownloadsDir.value;
+};
+
+const ensurePackOutputDir = async () => {
+    if (typeof packOutputDir.value === 'string' && packOutputDir.value.trim()) {
+        if (!defaultDownloadsDir.value) await resolveDownloadsDir();
+        return;
+    }
+    const downloads = await resolveDownloadsDir();
+    if (downloads) packOutputDir.value = downloads;
+};
+
+const choosePackOutputDir = async () => {
+    const selected = await window.ipcRenderer.invoke('dialog:selectDirectory');
+    if (typeof selected === 'string' && selected.trim()) {
+        packOutputDir.value = selected.trim();
+    }
+};
+
+const restoreDefaultOutputDir = async () => {
+    const downloads = defaultDownloadsDir.value || (await resolveDownloadsDir());
+    if (downloads) packOutputDir.value = downloads;
+};
+
 onMounted(() => {
     ffmpegUnsubStatus = ffmpeg.onStatus((status) => {
         if (ffmpegGate.value.status === 'ready') return;
@@ -92,6 +128,7 @@ onMounted(() => {
     });
 
     void startFfmpegPreload();
+    void ensurePackOutputDir();
 });
 
 onBeforeUnmount(() => {
@@ -136,6 +173,16 @@ const nextStep = () => {
     if (idx < steps.length - 1) {
         goToStep(steps[idx + 1]);
     }
+};
+
+const createNewPack = () => {
+    if (meta.value.iconPreviewUrl) URL.revokeObjectURL(meta.value.iconPreviewUrl);
+    meta.value = createDefaultMeta();
+    files.value = [];
+    processing.value = createDefaultProcessing();
+    audioProgress.value = {};
+    convertLogs.value = [];
+    hasStep.value = steps[0];
 };
 
 const startProcessing = async () => {
@@ -286,12 +333,11 @@ const startProcessing = async () => {
             <div 
                 v-for="(step, index) in steps" 
                 :key="step" 
-                class="flex items-center gap-2 cursor-pointer group"
-                @click="ffmpegGate.status === 'ready' && steps.indexOf(hasStep) > index ? goToStep(step) : null" 
+                class="flex items-center gap-2 select-none"
             >
                 <div 
                     class="flex items-center rounded-full transition-all duration-300 px-1 py-1 pr-4"
-                    :class="hasStep === step ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'"
+                    :class="hasStep === step ? 'bg-blue-50 ring-1 ring-blue-200' : ''"
                 >
                     <div
                         class="w-6 h-6 rounded-full flex justify-center items-center text-center text-[10px] font-bold mr-2 transition-colors"
@@ -387,6 +433,7 @@ const startProcessing = async () => {
                         v-model:files="files" 
                         :meta="meta" 
                         @request-process="startProcessing"
+                        @prev="goToStep(steps[0])"
                     />
                 </div>
 
@@ -407,40 +454,59 @@ const startProcessing = async () => {
                     <Step4Download 
                         :files="files"
                         :meta="meta"
-                        @next="nextStep"
+                        @create-new="createNewPack"
                     />
-                    <div class="flex justify-start mt-8">
-                         <button 
-                            @click="goToStep(steps[1])"
-                            class="text-slate-400 hover:text-slate-600 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition"
-                        >
-                            <ArrowLeft class="w-4 h-4" />
-                            <span>返回修改</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- 生成命令 -->
-                <div v-if="hasStep === steps[4]">
-                    <Step5Command 
-                        :files="files"
-                        :meta="meta"
-                    />
-                    <div class="flex justify-start mt-8">
-                         <button 
-                            @click="goToStep(steps[3])"
-                            class="text-slate-400 hover:text-slate-600 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition"
-                        >
-                            <ArrowLeft class="w-4 h-4" />
-                            <span>返回下载</span>
-                        </button>
-                    </div>
                 </div>
             </div>
         </div>
 
         <!-- 全局确认框 -->
         <GlobalDialog />
+
+        <button
+            type="button"
+            @click="settingsOpen = true"
+            class="fixed bottom-6 right-6 z-70 h-12 w-12 rounded-2xl bg-slate-900 text-white shadow-xl shadow-slate-900/20 transition hover:bg-slate-800"
+        >
+            <Settings class="h-5 w-5 mx-auto" />
+        </button>
+
+        <Model v-model:open="settingsOpen" title="设置">
+            <div class="space-y-4">
+                <div>
+                    <div class="text-sm font-extrabold text-slate-800">音频包输出路径</div>
+                    <div class="mt-1 text-xs font-bold text-slate-400">打包完成后会直接输出到该文件夹</div>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <input
+                        class="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                        :value="(packOutputDir || '').toString()"
+                        readonly
+                    />
+                    <button
+                        type="button"
+                        @click="choosePackOutputDir"
+                        class="rounded-xl bg-blue-600 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-blue-700"
+                    >
+                        选择文件夹
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between">
+                    <div class="text-xs font-bold text-slate-400 truncate">
+                        默认：{{ defaultDownloadsDir || '（正在读取...）' }}
+                    </div>
+                    <button
+                        type="button"
+                        @click="restoreDefaultOutputDir"
+                        class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-extrabold text-slate-700 transition hover:bg-slate-50"
+                    >
+                        恢复默认
+                    </button>
+                </div>
+            </div>
+        </Model>
     </main>
 </template>
 

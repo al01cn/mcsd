@@ -1,9 +1,10 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-import electron, { app, ipcMain, BrowserWindow } from "electron";
+import electron, { app, dialog, shell, ipcMain, BrowserWindow } from "electron";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import fs from "node:fs/promises";
 import require$$2 from "path";
 import require$$0$1 from "child_process";
 import require$$1 from "os";
@@ -12,6 +13,25 @@ import require$$0$2 from "util";
 import require$$0$3 from "events";
 import require$$0$4 from "http";
 import require$$1$1 from "https";
+async function findAvailableFilePath(filePath) {
+  try {
+    await fs.access(filePath);
+  } catch {
+    return filePath;
+  }
+  const dir = path.dirname(filePath);
+  const ext = path.extname(filePath);
+  const base = path.basename(filePath, ext);
+  for (let i = 1; i < 1e4; i += 1) {
+    const candidate = path.join(dir, `${base} (${i})${ext}`);
+    try {
+      await fs.access(candidate);
+    } catch {
+      return candidate;
+    }
+  }
+  return path.join(dir, `${base} (${Date.now()})${ext}`);
+}
 function loadIcpMain(ipcMain2, win2) {
   ipcMain2.on("window:minimize", () => {
     win2 == null ? void 0 : win2.minimize();
@@ -19,6 +39,36 @@ function loadIcpMain(ipcMain2, win2) {
   ipcMain2.on("window:close", () => {
     win2 == null ? void 0 : win2.close();
   });
+  ipcMain2.handle("system:getPath", async (_event, name) => {
+    if (name !== "downloads") throw new Error("unsupported system path");
+    return app.getPath(name);
+  });
+  ipcMain2.handle("dialog:selectDirectory", async () => {
+    const result = await dialog.showOpenDialog(win2, {
+      properties: ["openDirectory", "createDirectory"]
+    });
+    if (result.canceled) return null;
+    return result.filePaths[0] ?? null;
+  });
+  ipcMain2.handle("shell:openPath", async (_event, targetPath) => {
+    return shell.openPath(targetPath);
+  });
+  ipcMain2.handle(
+    "pack:saveToDirectory",
+    async (_event, args) => {
+      const directory = String(args.directory || "").trim();
+      const fileName = String(args.fileName || "").trim();
+      if (!directory) throw new Error("directory is required");
+      if (!fileName) throw new Error("fileName is required");
+      const safeFileName = path.basename(fileName);
+      await fs.mkdir(directory, { recursive: true });
+      const rawTargetPath = path.join(directory, safeFileName);
+      const targetPath = await findAvailableFilePath(rawTargetPath);
+      const bytes = args.data instanceof ArrayBuffer ? new Uint8Array(args.data) : args.data;
+      await fs.writeFile(targetPath, Buffer.from(bytes));
+      return targetPath;
+    }
+  );
 }
 function getDefaultExportFromCjs(x) {
   return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
@@ -710,7 +760,7 @@ var hasRequiredPackageJson;
 function requirePackageJson() {
   if (hasRequiredPackageJson) return packageJson;
   hasRequiredPackageJson = 1;
-  const fs = require$$0;
+  const fs2 = require$$0;
   const path2 = require$$2;
   packageJson = {
     findAndReadPackageJson,
@@ -729,7 +779,7 @@ function requirePackageJson() {
       if (!fileName) {
         return void 0;
       }
-      const json = JSON.parse(fs.readFileSync(fileName, "utf8"));
+      const json = JSON.parse(fs2.readFileSync(fileName, "utf8"));
       const name = (json == null ? void 0 : json.productName) || (json == null ? void 0 : json.name);
       if (!name || name.toLowerCase() === "electron") {
         return void 0;
@@ -748,7 +798,7 @@ function requirePackageJson() {
       const parsedPath = path2.parse(currentPath);
       const root = parsedPath.root;
       const dir = parsedPath.dir;
-      if (fs.existsSync(path2.join(currentPath, fileName))) {
+      if (fs2.existsSync(path2.join(currentPath, fileName))) {
         return path2.resolve(path2.join(currentPath, fileName));
       }
       if (currentPath === root) {
@@ -1149,7 +1199,7 @@ var hasRequiredInitialize;
 function requireInitialize() {
   if (hasRequiredInitialize) return initialize;
   hasRequiredInitialize = 1;
-  const fs = require$$0;
+  const fs2 = require$$0;
   const os = require$$1;
   const path2 = require$$2;
   const preloadInitializeFn = requireElectronLogPreload();
@@ -1204,7 +1254,7 @@ function requireInitialize() {
       );
     } catch {
     }
-    if (!preloadPath || !fs.existsSync(preloadPath)) {
+    if (!preloadPath || !fs2.existsSync(preloadPath)) {
       preloadPath = path2.join(
         externalApi.getAppUserDataPath() || os.tmpdir(),
         "electron-log-preload.js"
@@ -1216,7 +1266,7 @@ function requireInitialize() {
         console.error(e);
       }
     `;
-      fs.writeFileSync(preloadPath, preloadCode, "utf8");
+      fs2.writeFileSync(preloadPath, preloadCode, "utf8");
     }
     externalApi.setPreloadFileForSessions({
       filePath: preloadPath,
@@ -1979,7 +2029,7 @@ function requireFile$1() {
   if (hasRequiredFile$1) return File_1;
   hasRequiredFile$1 = 1;
   const EventEmitter = require$$0$3;
-  const fs = require$$0;
+  const fs2 = require$$0;
   const os = require$$1;
   class File extends EventEmitter {
     constructor({
@@ -2004,7 +2054,7 @@ function requireFile$1() {
     }
     clear() {
       try {
-        fs.writeFileSync(this.path, "", {
+        fs2.writeFileSync(this.path, "", {
           mode: this.writeOptions.mode,
           flag: "w"
         });
@@ -2034,7 +2084,7 @@ function requireFile$1() {
     getSize() {
       if (this.initialSize === void 0) {
         try {
-          const stats = fs.statSync(this.path);
+          const stats = fs2.statSync(this.path);
           this.initialSize = stats.size;
         } catch (e) {
           this.initialSize = 0;
@@ -2056,7 +2106,7 @@ function requireFile$1() {
       const text = this.asyncWriteQueue.join("");
       this.asyncWriteQueue = [];
       this.hasActiveAsyncWriting = true;
-      fs.writeFile(this.path, text, this.writeOptions, (e) => {
+      fs2.writeFile(this.path, text, this.writeOptions, (e) => {
         file2.hasActiveAsyncWriting = false;
         if (e) {
           file2.emit(
@@ -2085,7 +2135,7 @@ function requireFile$1() {
         return;
       }
       try {
-        fs.writeFileSync(this.path, text, this.writeOptions);
+        fs2.writeFileSync(this.path, text, this.writeOptions);
         this.increaseBytesWrittenCounter(text);
       } catch (e) {
         this.emit(
@@ -2099,12 +2149,12 @@ function requireFile$1() {
   File_1 = File;
   function readFileSyncFromEnd(filePath, bytesCount) {
     const buffer = Buffer.alloc(bytesCount);
-    const stats = fs.statSync(filePath);
+    const stats = fs2.statSync(filePath);
     const readLength = Math.min(stats.size, bytesCount);
     const offset = Math.max(0, stats.size - bytesCount);
-    const fd = fs.openSync(filePath, "r");
-    const totalBytes = fs.readSync(fd, buffer, 0, readLength, offset);
-    fs.closeSync(fd);
+    const fd = fs2.openSync(filePath, "r");
+    const totalBytes = fs2.readSync(fd, buffer, 0, readLength, offset);
+    fs2.closeSync(fd);
     return buffer.toString("utf8", 0, totalBytes);
   }
   return File_1;
@@ -2138,7 +2188,7 @@ function requireFileRegistry() {
   if (hasRequiredFileRegistry) return FileRegistry_1;
   hasRequiredFileRegistry = 1;
   const EventEmitter = require$$0$3;
-  const fs = require$$0;
+  const fs2 = require$$0;
   const path2 = require$$2;
   const File = requireFile$1();
   const NullFile = requireNullFile();
@@ -2196,8 +2246,8 @@ function requireFileRegistry() {
      * @private
      */
     testFileWriting({ filePath, writeOptions }) {
-      fs.mkdirSync(path2.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, "", { flag: "a", mode: writeOptions.mode });
+      fs2.mkdirSync(path2.dirname(filePath), { recursive: true });
+      fs2.writeFileSync(filePath, "", { flag: "a", mode: writeOptions.mode });
     }
   }
   FileRegistry_1 = FileRegistry;
@@ -2208,7 +2258,7 @@ var hasRequiredFile;
 function requireFile() {
   if (hasRequiredFile) return file;
   hasRequiredFile = 1;
-  const fs = require$$0;
+  const fs2 = require$$0;
   const os = require$$1;
   const path2 = require$$2;
   const FileRegistry = requireFileRegistry();
@@ -2243,7 +2293,7 @@ function requireFile() {
         const oldPath = file2.toString();
         const inf = path2.parse(oldPath);
         try {
-          fs.renameSync(oldPath, path2.join(inf.dir, `${inf.name}.old${inf.ext}`));
+          fs2.renameSync(oldPath, path2.join(inf.dir, `${inf.name}.old${inf.ext}`));
         } catch (e) {
           logConsole("Could not rotate log", e);
           const quarterOfMaxSize = Math.round(transport.maxSize / 4);
@@ -2313,14 +2363,14 @@ function requireFile() {
     function readAllLogs({ fileFilter = (f) => f.endsWith(".log") } = {}) {
       initializeOnFirstAccess();
       const logsPath = path2.dirname(transport.resolvePathFn(pathVariables));
-      if (!fs.existsSync(logsPath)) {
+      if (!fs2.existsSync(logsPath)) {
         return [];
       }
-      return fs.readdirSync(logsPath).map((fileName) => path2.join(logsPath, fileName)).filter(fileFilter).map((logPath) => {
+      return fs2.readdirSync(logsPath).map((fileName) => path2.join(logsPath, fileName)).filter(fileFilter).map((logPath) => {
         try {
           return {
             path: logPath,
-            lines: fs.readFileSync(logPath, "utf8").split(os.EOL)
+            lines: fs2.readFileSync(logPath, "utf8").split(os.EOL)
           };
         } catch {
           return null;
