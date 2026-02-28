@@ -21,6 +21,7 @@ import {
   Sun,
   Trash2,
   UploadCloud,
+  Users,
   X,
 } from "lucide-react";
 import NextImage from "next/image";
@@ -2410,6 +2411,69 @@ function Sidebar({
               maxRetries={ffmpegMaxRetries}
             />
           </div>
+        </div>
+      </div>
+
+      <div className="pl-2">
+        <div className="text-[11px] font-extrabold text-slate-500">{tr("桌面版下载（Windows）", "Desktop App (Windows)")}</div>
+        <div className="mt-2 grid gap-2">
+          <a
+            href={WebConfig.downloadUrl.gitee}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-xl bg-sky-400 px-3 py-2 text-xs font-bold text-white shadow-[0_4px_14px_0_rgba(56,189,248,0.25)] transition hover:bg-sky-300"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {tr("国内下载（Gitee）", "CN Download (Gitee)")}
+          </a>
+          <a
+            href={WebConfig.downloadUrl.github}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {tr("海外下载（GitHub）", "Global Download (GitHub)")}
+          </a>
+        </div>
+      </div>
+
+      <div className="pl-2">
+        <div className="text-[11px] font-extrabold text-slate-500">{tr("开源仓库", "Open Source")}</div>
+        <div className="mt-2 grid gap-2">
+          <a
+            href={WebConfig.git.gitee}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            <Folder className="mr-2 h-4 w-4 text-slate-500" />
+            {tr("国内（Gitee）", "CN (Gitee)")}
+          </a>
+          <a
+            href={WebConfig.git.github}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            <Folder className="mr-2 h-4 w-4 text-slate-500" />
+            {tr("海外（GitHub）", "Global (GitHub)")}
+          </a>
+        </div>
+      </div>
+
+      <div className="pl-2">
+        <div className="text-[11px] font-extrabold text-slate-500">{tr("QQ 交流群", "QQ Group")}</div>
+        <div className="mt-2 grid gap-2">
+          <a
+            href={WebConfig.qq.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            <Users className="mr-2 h-4 w-4 text-slate-500" />
+            {tr("加入群", "Join")} {WebConfig.qq.groupId}
+          </a>
         </div>
       </div>
 
@@ -4828,6 +4892,35 @@ export default function AudioPackGenerator() {
           </div>
         </main>
         <div className="lg:hidden px-2 pb-2">
+          <div className="mb-2 flex items-center justify-center gap-2">
+            <a
+              href={WebConfig.git.gitee}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center rounded-xl bg-slate-100 px-3 py-2 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50"
+            >
+              <Folder className="mr-2 h-4 w-4 text-slate-500" />
+              {tr("国内（Gitee）", "CN (Gitee)")}
+            </a>
+            <a
+              href={WebConfig.git.github}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center rounded-xl bg-slate-100 px-3 py-2 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50"
+            >
+              <Folder className="mr-2 h-4 w-4 text-slate-500" />
+              {tr("海外（GitHub）", "Global (GitHub)")}
+            </a>
+            <a
+              href={WebConfig.qq.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center rounded-xl bg-slate-100 px-3 py-2 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50"
+            >
+              <Users className="mr-2 h-4 w-4 text-slate-500" />
+              QQ {WebConfig.qq.groupId}
+            </a>
+          </div>
           <BeianLinks variant="horizontal" className="text-center text-[12px] leading-relaxed" />
         </div>
       </div>
