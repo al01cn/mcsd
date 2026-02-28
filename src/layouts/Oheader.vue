@@ -541,6 +541,26 @@ const startProcessing = async () => {
                         恢复默认
                     </button>
                 </div>
+
+                <div class="pt-4 border-t border-slate-100 space-y-3">
+                    <div class="text-sm font-extrabold text-slate-800">关于</div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="text-sm font-extrabold text-slate-700 truncate">{{ config.appName }}</div>
+                            <div class="shrink-0 font-mono text-[11px] font-bold text-slate-500">v{{ config.appVersion }}</div>
+                        </div>
+                        <div class="text-[11px] font-medium text-slate-500 leading-relaxed">
+                            本软件为第三方工具，与 Mojang Studios / Microsoft 不存在从属或授权关系；Minecraft 为其各自所有者的商标。
+                            请确保导入的音频与资源遵守版权及相关法律法规；因使用本软件导致的任何后果由使用者自行承担。
+                        </div>
+                    </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+                        <div class="text-sm font-extrabold text-slate-800">开源与收费声明</div>
+                        <div class="text-[11px] font-medium text-slate-600 leading-relaxed">
+                            本软件开源且免费，任何形式的收费售卖均与作者无关。若您通过收费渠道获得本软件，请立即向支付渠道申请退款，并向该平台举报相关售卖行为。
+                        </div>
+                    </div>
+                </div>
             </div>
         </Model>
     </main>
