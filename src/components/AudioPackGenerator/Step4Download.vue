@@ -166,7 +166,7 @@ const soundNames = computed(() => {
 
 const linesOldJava = computed(() => soundNames.value.map((s) => `/playsound ${s} @a ~ ~ ~ 10000`));
 const linesNewJava = computed(() => soundNames.value.map((s) => `/playsound ${s} record @a ~ ~ ~ 10000`));
-const linesStopJava = computed(() => soundNames.value.map((s) => `/stopsound @a record ${s}`));
+const linesStopJava = computed(() => soundNames.value.map((s) => `/stopsound @a * ${s}`));
 const linesBedrock = computed(() => soundNames.value.map((s) => `/playsound ${s} @a ~ ~ ~ 10000`));
 const linesStopBedrock = computed(() => soundNames.value.map((s) => `/stopsound @a ${s}`));
 
