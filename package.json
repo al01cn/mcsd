@@ -1,6 +1,6 @@
 {
   "name": "mcsd",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -17,7 +17,7 @@
     "file-saver": "^2.0.5",
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",
-    "next": "16.1.3",
+    "next": "16.2.10",
     "pinyin-pro": "^3.28.0",
     "react": "19.2.3",
     "react-dom": "19.2.3"

@@ -16,6 +16,7 @@ import {
   Image as ImageIcon,
   Moon,
   Package,
+  Pause,
   Play,
   Plus,
   Sun,
@@ -219,6 +220,13 @@ type FileItem = {
   status: "pending" | "processing" | "done" | "error";
   vanillaEvents: VanillaEventMapping[];
   processedBlob: Blob | null;
+};
+
+type AudioValidationFailureReason = "empty" | "no-content" | "unplayable" | "validation-unavailable";
+
+type AudioValidationFailure = {
+  name: string;
+  reason: AudioValidationFailureReason;
 };
 
 function collectDuplicateFileNameIds(items: Array<Pick<FileItem, "id" | "newName">>) {
@@ -695,6 +703,30 @@ function getAudioBaseName(name: string) {
 
 function readFileAsArrayBuffer(file: File) {
   return file.arrayBuffer();
+}
+
+async function validatePlayableAudioFile(
+  file: File,
+  audioContext: AudioContext | null
+): Promise<AudioValidationFailureReason | null> {
+  if (file.size <= 0) return "empty";
+  if (!audioContext) return "validation-unavailable";
+
+  try {
+    const source = await file.arrayBuffer();
+    if (source.byteLength <= 0) return "empty";
+
+    const decoded = await audioContext.decodeAudioData(source);
+    const hasContent =
+      decoded.numberOfChannels > 0 &&
+      decoded.length > 0 &&
+      decoded.sampleRate > 0 &&
+      Number.isFinite(decoded.duration) &&
+      decoded.duration > 0;
+    return hasContent ? null : "no-content";
+  } catch {
+    return "unplayable";
+  }
 }
 
 function bytesToHex(bytes: Uint8Array) {
@@ -1448,6 +1480,105 @@ function DisclaimerOverlay({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
+      </div>
+    </div>
+  );
+}
+
+function AudioValidationDialog({
+  failures,
+  onClose,
+}: {
+  failures: AudioValidationFailure[];
+  onClose: () => void;
+}) {
+  const { tr } = useLang();
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const lastActiveRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    lastActiveRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+    return () => {
+      lastActiveRef.current?.focus?.();
+    };
+  }, []);
+
+  const reasonLabel = (reason: AudioValidationFailureReason) => {
+    if (reason === "empty") return tr("文件为空", "The file is empty");
+    if (reason === "no-content") return tr("没有有效的音频内容", "No valid audio content");
+    if (reason === "validation-unavailable") {
+      return tr("当前浏览器无法验证或播放此音频", "This browser cannot validate or play the audio");
+    }
+    return tr("音频已损坏或浏览器无法播放", "The audio is damaged or cannot be played by this browser");
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDownCapture={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onClose();
+          return;
+        }
+        if (e.key === "Tab") {
+          e.preventDefault();
+          closeButtonRef.current?.focus();
+        }
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="audio-validation-dialog-title"
+        aria-describedby="audio-validation-dialog-description"
+        tabIndex={-1}
+        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl outline-none"
+      >
+        <div className="flex items-start gap-3 border-b border-slate-100 p-5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+            <AlertCircle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div id="audio-validation-dialog-title" className="text-base font-extrabold text-slate-800">
+              {tr("音频文件不可用", "Audio Files Unavailable")}
+            </div>
+            <div id="audio-validation-dialog-description" className="mt-1 text-sm text-slate-500">
+              {tr(
+                "以下文件无法播放或没有有效音频内容，已阻止添加。",
+                "The following files cannot be played or contain no valid audio content, so they were not added."
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5">
+          <ul className="divide-y divide-slate-100">
+            {failures.map((failure, index) => (
+              <li key={`${failure.name}-${index}`} className="py-3">
+                <div className="wrap-break-word text-sm font-bold text-slate-800">{failure.name}</div>
+                <div className="mt-1 text-xs font-bold text-red-600">{reasonLabel(failure.reason)}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="flex justify-end border-t border-slate-100 p-5">
+          <button
+            ref={closeButtonRef}
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800"
+          >
+            {tr("知道了", "Got It")}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2698,6 +2829,8 @@ export default function AudioPackGenerator() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [customSubtitles, setCustomSubtitles] = useState<Record<string, string>>({});
   const [eventSubtitles, setEventSubtitles] = useState<Record<string, string>>({});
+  const [audioValidationFailures, setAudioValidationFailures] = useState<AudioValidationFailure[]>([]);
+  const [audioValidationPending, setAudioValidationPending] = useState(false);
   const filesRef = useRef<FileItem[]>([]);
   const addingFilesRef = useRef(false);
   const snapshot = ffmpeg.getSnapshot();
@@ -2829,7 +2962,7 @@ export default function AudioPackGenerator() {
   const descInputMaxLength = Math.max(0, descLimit - AUTO_DESC_SUFFIX.length - (meta.desc.trim() ? 1 : 0));
 
   const fileCount = files.length;
-  const canStartProcess = fileCount > 0;
+  const canStartProcess = fileCount > 0 && !audioValidationPending;
 
   const getGuideDemoFiles = useCallback((): FileItem[] => {
     if (guideDemoFilesRef.current) return guideDemoFilesRef.current;
@@ -3616,6 +3749,7 @@ export default function AudioPackGenerator() {
     setFiles([]);
     setCustomSubtitles({});
     setEventSubtitles({});
+    setAudioValidationFailures([]);
     setNameReviewRequested(false);
     setMeta({
       name: "",
@@ -3679,6 +3813,8 @@ export default function AudioPackGenerator() {
     if (!list || list.length === 0) return;
     if (addingFilesRef.current) return;
     addingFilesRef.current = true;
+    setAudioValidationPending(true);
+    let audioContext: AudioContext | null = null;
 
     try {
       const rawIncoming = Array.from(list).filter((f) => f.type.startsWith("audio/"));
@@ -3696,8 +3832,15 @@ export default function AudioPackGenerator() {
 
       const nextItems: FileItem[] = [];
       const nextCustomSubtitles: Record<string, string> = {};
+      const validationFailures: AudioValidationFailure[] = [];
       let skippedDuplicate = 0;
       let skippedHashError = 0;
+
+      try {
+        audioContext = new AudioContext();
+      } catch {
+        audioContext = null;
+      }
 
       for (const file of incoming) {
         let hash = "";
@@ -3710,6 +3853,12 @@ export default function AudioPackGenerator() {
 
         if (usedHashes.has(hash)) {
           skippedDuplicate += 1;
+          continue;
+        }
+
+        const validationFailure = await validatePlayableAudioFile(file, audioContext);
+        if (validationFailure) {
+          validationFailures.push({ name: file.name, reason: validationFailure });
           continue;
         }
 
@@ -3739,6 +3888,10 @@ export default function AudioPackGenerator() {
         setCustomSubtitles((prev) => ({ ...prev, ...nextCustomSubtitles }));
       }
 
+      if (validationFailures.length > 0) {
+        setAudioValidationFailures(validationFailures);
+      }
+
       if (skippedDuplicate > 0 || skippedHashError > 0 || skippedTooLarge > 0) {
         const parts: string[] = [];
         if (skippedDuplicate > 0) parts.push(`重复音频 ${skippedDuplicate} 个`);
@@ -3748,6 +3901,10 @@ export default function AudioPackGenerator() {
         alert(`已跳过：${parts.join("，")}`);
       }
     } finally {
+      if (audioContext) {
+        await audioContext.close().catch(() => undefined);
+      }
+      setAudioValidationPending(false);
       addingFilesRef.current = false;
     }
   };
@@ -4458,16 +4615,28 @@ export default function AudioPackGenerator() {
                       ref={(el) => {
                         guideAnchorsRef.current.step2AddFiles = el;
                       }}
-                      className="inline-flex cursor-pointer items-center rounded-xl bg-sky-400 px-4 py-2 text-sm font-bold text-white shadow-[0_4px_14px_0_rgba(56,189,248,0.35)] transition hover:bg-sky-300"
+                      aria-disabled={audioValidationPending}
+                      className={[
+                        "inline-flex min-w-28 items-center justify-center rounded-xl px-4 py-2 text-sm font-bold text-white shadow-[0_4px_14px_0_rgba(56,189,248,0.35)] transition",
+                        audioValidationPending ? "cursor-wait bg-sky-300" : "cursor-pointer bg-sky-400 hover:bg-sky-300",
+                      ].join(" ")}
                     >
-                      <Plus className="mr-2 h-4 w-4" />
-                      {tr("添加文件", "Add Files")}
+                      {audioValidationPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Plus className="mr-2 h-4 w-4" />
+                      )}
+                      {audioValidationPending ? tr("正在验证", "Validating") : tr("添加文件", "Add Files")}
                       <input
                         type="file"
                         multiple
                         accept="audio/*"
+                        disabled={audioValidationPending}
                         className="hidden"
-                        onChange={(e) => void onAddFiles(e.target.files)}
+                        onChange={(e) => {
+                          void onAddFiles(e.currentTarget.files);
+                          e.currentTarget.value = "";
+                        }}
                       />
                     </label>
                     <button
@@ -4924,6 +5093,9 @@ export default function AudioPackGenerator() {
           <BeianLinks variant="horizontal" className="text-center text-[12px] leading-relaxed" />
         </div>
       </div>
+      {audioValidationFailures.length > 0 ? (
+        <AudioValidationDialog failures={audioValidationFailures} onClose={() => setAudioValidationFailures([])} />
+      ) : null}
       {packFormatDialogOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
@@ -5241,6 +5413,101 @@ function FileDropZone({
   const [vanillaPickerQuery, setVanillaPickerQuery] = useState("");
   const [vanillaPickerError, setVanillaPickerError] = useState<string | null>(null);
   const vanillaPickerInputRef = useRef<HTMLInputElement | null>(null);
+  const [previewingFileId, setPreviewingFileId] = useState<string | null>(null);
+  const [previewLoadingFileId, setPreviewLoadingFileId] = useState<string | null>(null);
+  const [previewErrorFileId, setPreviewErrorFileId] = useState<string | null>(null);
+  const audioPreviewRef = useRef<{ id: string; audio: HTMLAudioElement; url: string } | null>(null);
+
+  const releaseAudioPreview = useCallback(() => {
+    const current = audioPreviewRef.current;
+    if (!current) return;
+    audioPreviewRef.current = null;
+    current.audio.onplaying = null;
+    current.audio.onwaiting = null;
+    current.audio.onended = null;
+    current.audio.onerror = null;
+    current.audio.pause();
+    current.audio.removeAttribute("src");
+    current.audio.load();
+    URL.revokeObjectURL(current.url);
+  }, []);
+
+  const stopAudioPreview = useCallback(() => {
+    releaseAudioPreview();
+    setPreviewingFileId(null);
+    setPreviewLoadingFileId(null);
+  }, [releaseAudioPreview]);
+
+  useEffect(() => {
+    return () => {
+      releaseAudioPreview();
+    };
+  }, [releaseAudioPreview]);
+
+  const toggleAudioPreview = async (file: FileItem) => {
+    const current = audioPreviewRef.current;
+    setPreviewErrorFileId(null);
+
+    if (current?.id === file.id) {
+      if (!current.audio.paused) {
+        current.audio.pause();
+        setPreviewingFileId(null);
+        setPreviewLoadingFileId(null);
+        return;
+      }
+
+      setPreviewLoadingFileId(file.id);
+      try {
+        await current.audio.play();
+        setPreviewingFileId(file.id);
+        setPreviewLoadingFileId(null);
+      } catch {
+        stopAudioPreview();
+        setPreviewErrorFileId(file.id);
+      }
+      return;
+    }
+
+    stopAudioPreview();
+    const url = URL.createObjectURL(file.originalFile);
+    const audio = new Audio(url);
+    audio.preload = "auto";
+    audioPreviewRef.current = { id: file.id, audio, url };
+    setPreviewLoadingFileId(file.id);
+
+    audio.onplaying = () => {
+      if (audioPreviewRef.current?.audio !== audio) return;
+      setPreviewingFileId(file.id);
+      setPreviewLoadingFileId(null);
+    };
+    audio.onwaiting = () => {
+      if (audioPreviewRef.current?.audio === audio) setPreviewLoadingFileId(file.id);
+    };
+    audio.onended = () => {
+      if (audioPreviewRef.current?.audio !== audio) return;
+      stopAudioPreview();
+    };
+    audio.onerror = () => {
+      if (audioPreviewRef.current?.audio !== audio) return;
+      stopAudioPreview();
+      setPreviewErrorFileId(file.id);
+    };
+
+    try {
+      await audio.play();
+    } catch {
+      if (audioPreviewRef.current?.audio === audio) {
+        stopAudioPreview();
+        setPreviewErrorFileId(file.id);
+      }
+    }
+  };
+
+  const removeFile = (id: string) => {
+    if (audioPreviewRef.current?.id === id) stopAudioPreview();
+    if (previewErrorFileId === id) setPreviewErrorFileId(null);
+    onRemoveFile(id);
+  };
 
   useEffect(() => {
     if (!renameDialogOpen) return;
@@ -5869,13 +6136,56 @@ function FileDropZone({
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={() => onRemoveFile(f.id)}
-                className="self-end rounded-lg p-2 text-slate-300 transition hover:bg-red-50 hover:text-red-500 sm:self-auto"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+                <button
+                  type="button"
+                  aria-label={
+                    previewErrorFileId === f.id
+                      ? tr("重新尝试预览音频", "Retry audio preview")
+                      : previewingFileId === f.id
+                        ? tr("暂停音频预览", "Pause audio preview")
+                        : tr("播放音频预览", "Play audio preview")
+                  }
+                  aria-pressed={previewingFileId === f.id}
+                  title={
+                    previewErrorFileId === f.id
+                      ? tr("预览失败，点击重试", "Preview failed, click to retry")
+                      : previewingFileId === f.id
+                        ? tr("暂停预览", "Pause preview")
+                        : tr("播放预览", "Play preview")
+                  }
+                  disabled={previewLoadingFileId === f.id}
+                  onClick={() => void toggleAudioPreview(f)}
+                  className={[
+                    "inline-flex h-9 w-9 items-center justify-center rounded-lg transition",
+                    previewErrorFileId === f.id
+                      ? "bg-red-50 text-red-500 hover:bg-red-100"
+                      : previewingFileId === f.id
+                        ? "bg-sky-100 text-sky-600 hover:bg-sky-200"
+                        : "text-slate-400 hover:bg-sky-50 hover:text-sky-600",
+                    previewLoadingFileId === f.id ? "cursor-wait" : "",
+                  ].join(" ")}
+                >
+                  {previewLoadingFileId === f.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : previewErrorFileId === f.id ? (
+                    <AlertCircle className="h-4 w-4" />
+                  ) : previewingFileId === f.id ? (
+                    <Pause className="h-4 w-4" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  aria-label={tr("删除音频", "Delete audio")}
+                  title={tr("删除音频", "Delete audio")}
+                  onClick={() => removeFile(f.id)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
