@@ -46,7 +46,7 @@ import { buildSoundEventSearchText, translateSoundEventKeyZh } from "../lib/Soun
 
 type PackPlatform = "java" | "bedrock";
 
-type Step = 1 | 2 | 3 | 4 | 5;
+type Step = 1 | 2 | 3 | 4;
 
 type Lang = "zh" | "en";
 
@@ -296,8 +296,7 @@ type GuideAnchorKey =
   | "step3ProgressCard"
   | "step3LogCard"
   | "step4Download"
-  | "step4Next"
-  | "step5DownloadTxt";
+  | "step4Commands";
 
 type GuideItem = {
   title: string;
@@ -432,22 +431,21 @@ function buildImmersiveGuideItems({
 
   const step4: GuideItem[] = [
     {
-      title: tr("下载资源包", "Download Pack"),
-      desc: tr("点击下载 zip / mcpack 文件。", "Download as zip / mcpack."),
+      title: tr("下载资源包 / 命令", "Download Pack / Commands"),
+      desc: tr(
+        "点击“下载”可选择：仅音频包、仅命令 TXT、或两者一起下载。",
+        "Click “Download” to choose: pack only, TXT only, or both."
+      ),
       anchorKey: "step4Download",
     },
     {
-      title: tr("生成命令", "Generate Commands"),
-      desc: tr("继续进入下一步，生成 /playsound 命令。", "Continue to generate /playsound commands."),
-      anchorKey: "step4Next",
-      primaryLabel: tr("前往生成命令", "Go to Commands"),
-      primaryAction: () => goToStep(5),
+      title: tr("查看播放命令", "View Play Commands"),
+      desc: tr(
+        "点击“查看播放命令”在弹窗中浏览 / 复制 /playsound 命令。",
+        "Click “View Play Commands” to browse and copy /playsound commands in a dialog."
+      ),
+      anchorKey: "step4Commands",
     },
-  ];
-
-  const step5: GuideItem[] = [
-    { title: tr("下载命令 TXT", "Download TXT"), desc: tr("可导出命令列表，便于复制到游戏或备份。", "Export commands for copying or backup."), anchorKey: "step5DownloadTxt" },
-    { title: tr("复制命令", "Copy Commands"), desc: tr("每条命令右侧可一键复制。", "Copy each command with one click."), anchorKey: undefined },
   ];
 
   const byStep: Record<Step, GuideItem[]> = {
@@ -455,9 +453,8 @@ function buildImmersiveGuideItems({
     2: step2,
     3: step3,
     4: step4,
-    5: step5,
   };
-  return byStep[step] ?? step5;
+  return byStep[step] ?? step4;
 }
 
 function clampDescForPlatform(desc: string, platform: PackPlatform) {
@@ -2409,8 +2406,7 @@ function MobileStepBar({
     { index: 1, title: tr("基本信息", "Basics") },
     { index: 2, title: tr("导入音频", "Import") },
     { index: 3, title: tr("格式转换", "Convert") },
-    { index: 4, title: tr("打包下载", "Download") },
-    { index: 5, title: tr("生成命令", "Commands") },
+    { index: 4, title: tr("下载与命令", "Download") },
   ];
 
   return (
@@ -2635,16 +2631,9 @@ function Sidebar({
         <StepIndicator
           index={4}
           active={step === 4}
-          completed={step > 4}
-          title={tr("打包下载", "Download")}
-          desc={tr("生成资源包", "Build pack")}
-        />
-        <StepIndicator
-          index={5}
-          active={step === 5}
           completed={false}
-          title={tr("生成命令", "Commands")}
-          desc={tr("游戏内播放", "Play in-game")}
+          title={tr("下载与命令", "Download")}
+          desc={tr("下载资源包与播放命令", "Download pack & commands")}
         />
       </div>
       <div className="-mt-2 pl-2">
@@ -2868,6 +2857,10 @@ export default function AudioPackGenerator() {
   const packFormatDialogInputRef = useRef<HTMLInputElement | null>(null);
   const packFormatDialogLastActiveRef = useRef<HTMLElement | null>(null);
 
+  const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
+  const [commandsDialogOpen, setCommandsDialogOpen] = useState(false);
+  const [downloadingChoice, setDownloadingChoice] = useState<"pack" | "txt" | "both" | null>(null);
+
   const [subtitleDialogOpen, setSubtitleDialogOpen] = useState(false);
   const [subtitleDialogQuery, setSubtitleDialogQuery] = useState("");
   const subtitleDialogInputRef = useRef<HTMLInputElement | null>(null);
@@ -2937,8 +2930,7 @@ export default function AudioPackGenerator() {
     step3ProgressCard: null,
     step3LogCard: null,
     step4Download: null,
-    step4Next: null,
-    step5DownloadTxt: null,
+    step4Commands: null,
   });
   const guideAnchorElRef = useRef<HTMLElement | null>(null);
   const guideAnchorRafRef = useRef(0);
@@ -3170,6 +3162,21 @@ export default function AudioPackGenerator() {
         ].join("\n");
 
     saveAs(new Blob([content], { type: "text/plain;charset=utf-8" }), `${safeName}_playsound.txt`);
+  };
+
+  const handleDownloadChoice = async (choice: "pack" | "txt" | "both") => {
+    setDownloadDialogOpen(false);
+    setDownloadingChoice(choice);
+    try {
+      if (choice === "pack" || choice === "both") {
+        await downloadPack();
+      }
+      if (choice === "txt" || choice === "both") {
+        downloadCommandsTxt();
+      }
+    } finally {
+      setDownloadingChoice(null);
+    }
   };
 
   useEffect(() => {
@@ -4348,8 +4355,8 @@ export default function AudioPackGenerator() {
         const rawItem = guideItems[itemIndex];
         const isLast = itemIndex + 1 >= itemTotal;
         const item =
-          isLast && step < 3 && !rawItem.primaryAction
-            ? { ...rawItem, primaryLabel: rawItem.primaryLabel ?? tr("下一步", "Next") }
+          isLast && !rawItem.primaryAction
+            ? { ...rawItem, primaryLabel: rawItem.primaryLabel ?? (step === 4 ? tr("完成", "Done") : tr("下一步", "Next")) }
             : rawItem;
         const stepTitle =
           (
@@ -4357,8 +4364,7 @@ export default function AudioPackGenerator() {
               1: tr("基本信息", "Basics"),
               2: tr("导入音频", "Import"),
               3: tr("格式转换", "Convert"),
-              4: tr("打包下载", "Download"),
-              5: tr("生成命令", "Commands"),
+              4: tr("下载与命令", "Download"),
             } as const
           )[step] ?? tr("引导", "Guide");
 
@@ -4380,7 +4386,7 @@ export default function AudioPackGenerator() {
                 item.primaryAction();
                 return;
               }
-              if (step === 5) {
+              if (step === 4) {
                 finishGuide();
               }
             }}
@@ -4418,7 +4424,7 @@ export default function AudioPackGenerator() {
           <div
             className={[
               "flex-1 p-4 md:p-6 lg:p-8",
-              step === 5 || step === 3 ? "overflow-hidden" : "overflow-y-auto",
+              step === 3 ? "overflow-hidden" : "overflow-y-auto",
             ].join(" ")}
           >
             {step === 1 ? (
@@ -4904,22 +4910,23 @@ export default function AudioPackGenerator() {
                     guideAnchorsRef.current.step4Download = el;
                   }}
                   type="button"
-                  onClick={() => void downloadPack()}
+                  onClick={() => setDownloadDialogOpen(true)}
                   className="inline-flex w-full max-w-sm items-center justify-center rounded-xl bg-sky-400 px-6 py-3 text-base font-bold text-white shadow-xl shadow-sky-200 transition hover:-translate-y-0.5 hover:bg-sky-300 sm:w-auto sm:px-8 sm:py-4 sm:text-lg"
                 >
                   <Download className="mr-2 h-5 w-5" />
-                  {tr("下载资源包", "Download Pack")} (.{meta.platform === "bedrock" ? "mcpack" : "zip"})
+                  {tr("下载", "Download")}
                 </button>
 
                 <button
                   ref={(el) => {
-                    guideAnchorsRef.current.step4Next = el;
+                    guideAnchorsRef.current.step4Commands = el;
                   }}
                   type="button"
-                  onClick={() => goToStep(5)}
+                  onClick={() => setCommandsDialogOpen(true)}
                   className="mt-4 inline-flex items-center rounded-xl bg-slate-900 px-6 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
                 >
-                  {tr("下一步：生成命令", "Next: Commands")} <ArrowRight className="ml-2 h-4 w-4" />
+                  <Play className="mr-2 h-4 w-4" />
+                  {tr("查看播放命令", "View Play Commands")}
                 </button>
 
                 <button
@@ -4929,133 +4936,6 @@ export default function AudioPackGenerator() {
                 >
                   {tr("创建新的资源包", "Create Another Pack")}
                 </button>
-              </div>
-            ) : null}
-
-            {step === 5 ? (
-              <div className="mx-auto flex h-full max-w-3xl flex-col overflow-hidden">
-                <div className="shrink-0 border-b border-slate-100 pb-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h2 className="mb-1 text-xl font-extrabold text-slate-800 sm:text-2xl md:mb-2 md:text-3xl">
-                        {tr("生成命令", "Commands")}
-                      </h2>
-                      <p className="text-[11px] text-slate-500 sm:text-xs md:text-sm">
-                        {tr("在游戏内使用 /playsound 播放资源包里的声音。", "Use /playsound in-game to play sounds from the pack.")}
-                      </p>
-                    </div>
-                    <button
-                      ref={(el) => {
-                        guideAnchorsRef.current.step5DownloadTxt = el;
-                      }}
-                      type="button"
-                      onClick={downloadCommandsTxt}
-                      className="inline-flex items-center rounded-xl bg-slate-900 px-2.5 py-2 text-[11px] font-bold text-white transition hover:bg-slate-800 sm:px-3 sm:text-xs md:px-4 md:text-sm"
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      {tr("下载 TXT", "Download TXT")}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto pt-4">
-                  {(() => {
-                    const sourceFiles = guideOpen && files.length === 0 ? getGuideDemoFiles() : files;
-                    const soundNames = buildCommandSoundNames(sourceFiles);
-
-                    const linesOldJava = soundNames.map((s) => `/playsound ${s} @a ~ ~ ~ 10000`);
-                    const linesNewJava = soundNames.map((s) => `/playsound ${s} record @a ~ ~ ~ 10000`);
-                    const linesStopJava = soundNames.map((s) => `/stopsound @a record ${s}`);
-                    const linesBedrock = soundNames.map((s) => `/playsound ${s} @a ~ ~ ~ 10000`);
-                    const linesStopBedrock = soundNames.map((s) => `/stopsound @a ${s}`);
-
-                    const CommandList = ({
-                      lines,
-                    }: {
-                      lines: string[];
-                    }) => {
-                      if (lines.length === 0) {
-                        return (
-                          <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
-                            {tr("暂无音频文件", "No audio files")}
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <ul className="space-y-2">
-                          {lines.map((cmd, idx) => (
-                            <li
-                              key={`${idx}-${cmd}`}
-                              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"
-                            >
-                              <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[11px] text-slate-700 sm:text-xs">
-                                {cmd}
-                              </code>
-                              <button
-                                type="button"
-                                onClick={() => void copyCommand(cmd)}
-                                className="inline-flex shrink-0 items-center rounded-lg bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-white transition hover:bg-slate-800 sm:px-3 sm:text-xs"
-                              >
-                                <Copy className="mr-1.5 h-3.5 w-3.5" />
-                                {copiedCommand === cmd ? "已复制" : "复制"}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      );
-                    };
-
-                    return meta.platform === "java" ? (
-                      <div className="grid gap-6">
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                          <div className="mb-2 text-sm font-extrabold text-slate-700">Java 1.7.10 及以下</div>
-                          <CommandList lines={linesOldJava} />
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                          <div className="mb-2 text-sm font-extrabold text-slate-700">Java 1.8 及以上</div>
-                          <CommandList lines={linesNewJava} />
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                          <div className="mb-2 text-sm font-extrabold text-slate-700">
-                            停止声音 (1.9.3 及以上支持)
-                          </div>
-                          <CommandList lines={linesStopJava} />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid gap-6">
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                          <div className="mb-2 text-sm font-extrabold text-slate-700">基岩版</div>
-                          <CommandList lines={linesBedrock} />
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                          <div className="mb-2 text-sm font-extrabold text-slate-700">停止声音</div>
-                          <CommandList lines={linesStopBedrock} />
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                <div className="shrink-0 border-t border-slate-100 pt-4">
-                  <div className="flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => goToStep(4)}
-                      className="inline-flex items-center rounded-xl px-2.5 py-2 text-[11px] font-bold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800 sm:px-3 sm:text-xs md:px-4 md:text-sm"
-                    >
-                      上一步
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetAll}
-                      className="inline-flex items-center rounded-xl bg-sky-400 px-4 py-2.5 text-[11px] font-bold text-white shadow-[0_4px_14px_0_rgba(56,189,248,0.35)] transition hover:bg-sky-300 sm:px-5 sm:text-xs md:px-6 md:py-3 md:text-sm"
-                    >
-                      创建新的资源包
-                    </button>
-                  </div>
-                </div>
               </div>
             ) : null}
           </div>
@@ -5345,6 +5225,236 @@ export default function AudioPackGenerator() {
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {downloadDialogOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && downloadingChoice === null) setDownloadDialogOpen(false);
+          }}
+          onKeyDownCapture={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              if (downloadingChoice === null) setDownloadDialogOpen(false);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
+            className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl outline-none"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+              <div className="min-w-0">
+                <div className="text-base font-extrabold text-slate-800">{tr("选择下载内容", "Choose Download")}</div>
+                <div className="mt-1 text-sm text-slate-500">{tr("选择要下载的文件", "Select what to download")}</div>
+              </div>
+              <button
+                type="button"
+                aria-label={tr("关闭", "Close")}
+                onClick={() => setDownloadDialogOpen(false)}
+                disabled={downloadingChoice !== null}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3 p-5">
+              <button
+                type="button"
+                onClick={() => void handleDownloadChoice("pack")}
+                disabled={downloadingChoice !== null}
+                className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-sky-300 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-500">
+                  <Package className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-extrabold text-slate-800">{tr("音频资源包", "Sound Pack")}</div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    .{meta.platform === "bedrock" ? "mcpack" : "zip"}
+                    {tr(" · 含音频与配置", " · audio & config")}
+                  </div>
+                </div>
+                {downloadingChoice === "pack" || downloadingChoice === "both" ? (
+                  <Loader2 className="h-5 w-5 shrink-0 animate-spin text-sky-400" />
+                ) : (
+                  <Download className="h-5 w-5 shrink-0 text-slate-400 transition group-hover:text-sky-400" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleDownloadChoice("txt")}
+                disabled={downloadingChoice !== null}
+                className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-500">
+                  <FileIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-extrabold text-slate-800">{tr("命令 TXT", "Commands TXT")}</div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    .txt{tr(" · /playsound 命令列表", " · /playsound commands")}
+                  </div>
+                </div>
+                {downloadingChoice === "txt" || downloadingChoice === "both" ? (
+                  <Loader2 className="h-5 w-5 shrink-0 animate-spin text-emerald-400" />
+                ) : (
+                  <Download className="h-5 w-5 shrink-0 text-slate-400 transition group-hover:text-emerald-400" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleDownloadChoice("both")}
+                disabled={downloadingChoice !== null}
+                className="group flex items-center gap-4 rounded-2xl border-2 border-sky-300 bg-sky-50 p-4 text-left transition hover:border-sky-400 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-400 text-white">
+                  <Download className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-extrabold text-slate-800">{tr("全部下载", "Download Both")}</div>
+                  <div className="mt-0.5 text-xs text-slate-500">{tr("音频包 + 命令 TXT", "Pack + Commands TXT")}</div>
+                </div>
+                {downloadingChoice === "both" ? (
+                  <Loader2 className="h-5 w-5 shrink-0 animate-spin text-sky-400" />
+                ) : (
+                  <ArrowRight className="h-5 w-5 shrink-0 text-sky-400" />
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {commandsDialogOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setCommandsDialogOpen(false);
+          }}
+          onKeyDownCapture={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setCommandsDialogOpen(false);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
+            className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl outline-none"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-base font-extrabold text-slate-800">
+                  <Play className="h-4 w-4 text-sky-500" />
+                  {tr("播放命令", "Play Commands")}
+                </div>
+                <div className="mt-1 text-sm text-slate-500">
+                  {tr("在游戏内使用 /playsound 播放资源包里的声音。", "Use /playsound in-game to play sounds from the pack.")}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={downloadCommandsTxt}
+                  className="inline-flex items-center rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800"
+                >
+                  <Download className="mr-1.5 h-4 w-4" />
+                  {tr("下载 TXT", "Download TXT")}
+                </button>
+                <button
+                  type="button"
+                  aria-label={tr("关闭", "Close")}
+                  onClick={() => setCommandsDialogOpen(false)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {(() => {
+                const sourceFiles = guideOpen && files.length === 0 ? getGuideDemoFiles() : files;
+                const soundNames = buildCommandSoundNames(sourceFiles);
+
+                const linesOldJava = soundNames.map((s) => `/playsound ${s} @a ~ ~ ~ 10000`);
+                const linesNewJava = soundNames.map((s) => `/playsound ${s} record @a ~ ~ ~ 10000`);
+                const linesStopJava = soundNames.map((s) => `/stopsound @a record ${s}`);
+                const linesBedrock = soundNames.map((s) => `/playsound ${s} @a ~ ~ ~ 10000`);
+                const linesStopBedrock = soundNames.map((s) => `/stopsound @a ${s}`);
+
+                const CommandList = ({ lines }: { lines: string[] }) => {
+                  if (lines.length === 0) {
+                    return (
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
+                        {tr("暂无音频文件", "No audio files")}
+                      </div>
+                    );
+                  }
+                  return (
+                    <ul className="space-y-2">
+                      {lines.map((cmd, idx) => (
+                        <li
+                          key={`${idx}-${cmd}`}
+                          className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                        >
+                          <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[11px] text-slate-700 sm:text-xs">
+                            {cmd}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => void copyCommand(cmd)}
+                            className="inline-flex shrink-0 items-center rounded-lg bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold text-white transition hover:bg-slate-800 sm:px-3 sm:text-xs"
+                          >
+                            <Copy className="mr-1.5 h-3.5 w-3.5" />
+                            {copiedCommand === cmd ? tr("已复制", "Copied") : tr("复制", "Copy")}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                };
+
+                return meta.platform === "java" ? (
+                  <div className="grid gap-6">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                      <div className="mb-2 text-sm font-extrabold text-slate-700">Java 1.7.10 及以下</div>
+                      <CommandList lines={linesOldJava} />
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                      <div className="mb-2 text-sm font-extrabold text-slate-700">Java 1.8 及以上</div>
+                      <CommandList lines={linesNewJava} />
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                      <div className="mb-2 text-sm font-extrabold text-slate-700">
+                        {tr("停止声音 (1.9.3 及以上支持)", "Stop Sound (1.9.3+)")}
+                      </div>
+                      <CommandList lines={linesStopJava} />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-6">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                      <div className="mb-2 text-sm font-extrabold text-slate-700">{tr("基岩版", "Bedrock")}</div>
+                      <CommandList lines={linesBedrock} />
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                      <div className="mb-2 text-sm font-extrabold text-slate-700">{tr("停止声音", "Stop Sound")}</div>
+                      <CommandList lines={linesStopBedrock} />
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
