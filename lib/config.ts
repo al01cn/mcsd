@@ -3,6 +3,7 @@ import pkg from '../package.json'
 export const WebConfig = {
     appVersion: pkg.version,
     appName: "在线 Minecraft 音频包生成器",
+    upgradeUrl: "https://mcsd2.al01.cn/",
     git: {
         github: "https://github.com/al01cn/mcsd",
         gitee: "https://gitee.com/al01/mcsd"

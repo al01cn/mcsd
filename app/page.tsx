@@ -1,4 +1,4 @@
-import AudioPackGenerator from "./AudioPackGenerator";
+import UpgradeNotice from "./UpgradeNotice";
 
 export default function Home() {
 
@@ -19,7 +19,7 @@ export default function Home() {
       <main>
         <h1 className="sr-only">{defaultTitle}</h1>
         <p className="sr-only">{description}</p>
-        <AudioPackGenerator />
+        <UpgradeNotice />
       </main>
       <script
         type="application/ld+json"
