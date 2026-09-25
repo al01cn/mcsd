@@ -2,6 +2,10 @@
 
 一个基于浏览器端 FFmpeg（WebAssembly）的 Minecraft 音频资源包生成器：在本地把音频转成 OGG（Vorbis），生成 `sounds.json`、资源包元数据并打包下载，无需把音频上传到服务器。
 
+> **项目迁移通知**
+>
+> 当前仓库是 MC SoundsGen 的旧版本代码。MCSD 2.0 已迁移到独立仓库，后续开发、问题反馈与贡献请前往 [MCSD 2.0 新版仓库](https://github.com/al01cn/mcsd2)。
+
 ---
 
 ## 中文（ZH）
@@ -89,6 +93,10 @@ app/
 ### Overview
 
 MC SoundsGen is a browser-based Minecraft sound pack generator powered by FFmpeg WebAssembly. It converts audio to OGG (Vorbis), generates `sounds.json` and pack metadata, then bundles everything for download — no server-side upload required.
+
+> **Migration notice**
+>
+> This repository contains the legacy MC SoundsGen codebase. MCSD 2.0 has moved to a separate repository; please use the [MCSD 2.0 repository](https://github.com/al01cn/mcsd2) for future development, issues, and contributions.
 
 ### Features
 
